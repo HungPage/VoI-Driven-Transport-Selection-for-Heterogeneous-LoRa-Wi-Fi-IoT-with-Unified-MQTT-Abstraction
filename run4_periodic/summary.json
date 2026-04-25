@@ -1,0 +1,26 @@
+{
+  "exp_label": "run4_periodic",
+  "logger_started": "2026-04-25T22:09:28.151833",
+  "logger_stopped": "2026-04-25T23:23:45.256504",
+  "packets_total": 540,
+  "packets_by_lc": {
+    "A": 12,
+    "B": 199,
+    "D": 329
+  },
+  "packets_by_state": {
+    "S0": 43,
+    "S1": 162,
+    "S3": 335
+  },
+  "packets_fallback": 174,
+  "packets_multi_hop": 0,
+  "estimated_total_energy_mj": 87500.0,
+  "nodes_seen": [
+    "node_03",
+    "node_04",
+    "node_05",
+    "node_06"
+  ],
+  "first_packet": "2026-04-25T22:09:44.066950"
+}

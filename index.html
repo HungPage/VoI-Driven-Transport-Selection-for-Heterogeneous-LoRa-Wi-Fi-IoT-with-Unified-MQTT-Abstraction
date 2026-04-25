@@ -1,0 +1,2530 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>南深橋 Observation Console — v5.6</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* ============================================================
+       Design tokens — editorial / scientific instrument
+       ============================================================ */
+    :root {
+      /* paper-tone palette */
+      --paper:        #faf8f3;
+      --paper-2:      #f3efe6;
+      --paper-3:      #ebe5d6;
+      --ink:          #1a1a1a;
+      --ink-2:        #444444;
+      --ink-3:        #6e6e6e;
+      --ink-4:        #999999;
+      --rule:         #d9d3c4;
+      --rule-strong:  #2b2a26;
+
+      /* accents — restrained */
+      --data-blue:    #1f3b66;
+      --data-teal:    #186f5f;
+      --data-amber:   #b46524;
+      --data-red:     #962d2d;
+      --data-violet:  #5a3d72;
+
+      /* status mapping */
+      --good:  var(--data-teal);
+      --warn:  var(--data-amber);
+      --bad:   var(--data-red);
+
+      /* type scale */
+      --serif:    'Fraunces', 'Noto Serif TC', Georgia, serif;
+      --sans:     'Inter', 'Noto Sans TC', -apple-system, sans-serif;
+      --mono:     'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+      /* spacing */
+      --gap-xs: 4px;
+      --gap-sm: 8px;
+      --gap-md: 16px;
+      --gap-lg: 24px;
+      --gap-xl: 40px;
+    }
+
+    /* ============================================================
+       Reset & base
+       ============================================================ */
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+    html { font-size: 15px; }
+    body {
+      font-family: var(--sans);
+      color: var(--ink);
+      background: var(--paper);
+      background-image:
+        repeating-linear-gradient(
+          0deg,
+          transparent 0px,
+          transparent 39px,
+          rgba(217, 211, 196, 0.25) 39px,
+          rgba(217, 211, 196, 0.25) 40px
+        );
+      min-height: 100vh;
+      line-height: 1.55;
+      letter-spacing: 0.005em;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Soft paper grain */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      mix-blend-mode: multiply;
+      z-index: 1000;
+    }
+
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: var(--paper-2); }
+    ::-webkit-scrollbar-thumb { background: var(--ink-4); border-radius: 0; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--ink-3); }
+
+    /* selection */
+    ::selection { background: var(--ink); color: var(--paper); }
+
+    /* ============================================================
+       Layout — magazine grid
+       ============================================================ */
+    .frame {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 56px 48px 80px;
+      position: relative;
+    }
+
+    /* ============================================================
+       Masthead
+       ============================================================ */
+    .masthead {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: end;
+      gap: var(--gap-lg);
+      padding-bottom: 24px;
+      border-bottom: 2px solid var(--rule-strong);
+      margin-bottom: 56px;
+    }
+    .masthead-brand {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .masthead-eyebrow {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+    }
+    .masthead h1 {
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: clamp(36px, 5vw, 56px);
+      line-height: 1;
+      letter-spacing: -0.02em;
+      font-feature-settings: 'opsz' 96;
+      color: var(--ink);
+    }
+    .masthead h1 em {
+      font-style: italic;
+      font-weight: 400;
+      color: var(--data-blue);
+    }
+    .masthead-meta {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--ink-3);
+      text-align: right;
+      line-height: 1.6;
+    }
+    .masthead-meta div { white-space: nowrap; }
+    .masthead-tagline {
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: 18px;
+      color: var(--ink-2);
+      max-width: 600px;
+      line-height: 1.4;
+    }
+
+    /* Status row under masthead */
+    .status-strip {
+      display: flex;
+      align-items: center;
+      gap: var(--gap-lg);
+      padding: 16px 0;
+      margin-bottom: 56px;
+      border-bottom: 1px solid var(--rule);
+      flex-wrap: wrap;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      color: var(--ink-2);
+    }
+    .status-pill::before {
+      content: '';
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--ink-4);
+    }
+    .status-pill.live::before {
+      background: var(--good);
+      box-shadow: 0 0 0 0 rgba(24, 111, 95, 0.6);
+      animation: livePulse 2.4s ease-in-out infinite;
+    }
+    .status-pill.warn::before  { background: var(--warn); }
+    .status-pill.error::before { background: var(--bad); }
+    @keyframes livePulse {
+      0% { box-shadow: 0 0 0 0 rgba(24, 111, 95, 0.5); }
+      50% { box-shadow: 0 0 0 8px rgba(24, 111, 95, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(24, 111, 95, 0); }
+    }
+    .status-divider {
+      width: 1px;
+      height: 14px;
+      background: var(--rule);
+    }
+    .status-dropdown {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      color: var(--ink);
+      background: transparent;
+      border: 1px solid var(--rule-strong);
+      padding: 4px 10px;
+      cursor: pointer;
+      border-radius: 0;
+    }
+    .status-dropdown:focus {
+      outline: 2px solid var(--data-blue);
+      outline-offset: 2px;
+    }
+
+    /* ============================================================
+       Section header (with decorative numbering)
+       ============================================================ */
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      gap: var(--gap-md);
+      margin: 56px 0 24px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--rule);
+    }
+    .section-num {
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: 14px;
+      color: var(--data-blue);
+      font-weight: 400;
+    }
+    .section-title {
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: 22px;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+    }
+    .section-meta {
+      margin-left: auto;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+    }
+
+    /* ============================================================
+       Architecture stages — three pillars
+       ============================================================ */
+    .arch {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0;
+      margin-bottom: 32px;
+      border: 1px solid var(--rule-strong);
+      background: var(--paper);
+    }
+    .arch-cell {
+      padding: 24px 28px;
+      position: relative;
+    }
+    .arch-cell + .arch-cell {
+      border-left: 1px solid var(--rule);
+    }
+    .arch-cell + .arch-cell::before {
+      content: '→';
+      position: absolute;
+      left: -10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 20px; height: 20px;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--serif);
+      font-size: 16px;
+      display: grid;
+      place-items: center;
+    }
+    .arch-step {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      color: var(--data-blue);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .arch-name {
+      font-family: var(--serif);
+      font-size: 20px;
+      font-weight: 500;
+      letter-spacing: -0.005em;
+      margin-bottom: 4px;
+    }
+    .arch-name em {
+      font-style: italic;
+      color: var(--ink-3);
+      font-weight: 400;
+      font-size: 13px;
+      letter-spacing: 0;
+    }
+    .arch-value {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--ink-2);
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--rule);
+    }
+    @media (max-width: 900px) {
+      .arch { grid-template-columns: 1fr; }
+      .arch-cell + .arch-cell { border-left: none; border-top: 1px solid var(--rule); }
+      .arch-cell + .arch-cell::before {
+        left: 50%; top: -10px;
+        transform: translateX(-50%) rotate(90deg);
+      }
+    }
+
+    /* ============================================================
+       Stat tiles — instrument readouts
+       ============================================================ */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 0;
+      border: 1px solid var(--rule);
+      margin-bottom: 32px;
+    }
+    .stat-tile {
+      padding: 18px 22px;
+      border-right: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+      background: var(--paper);
+      transition: background 0.2s;
+    }
+    .stat-tile:hover { background: var(--paper-2); }
+    .stat-tile:last-child { border-right: none; }
+    .stat-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-bottom: 4px;
+    }
+    .stat-value {
+      font-family: var(--serif);
+      font-size: 32px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+      font-feature-settings: 'tnum' 1;
+    }
+    .stat-value.dim { color: var(--ink-3); }
+    .stat-value.warn { color: var(--data-amber); }
+    .stat-value.bad { color: var(--data-red); font-weight: 600; }
+    .stat-meta {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--ink-3);
+      margin-top: 4px;
+    }
+
+    /* ============================================================
+       Panels — broadsheet article cards
+       ============================================================ */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      margin-bottom: 32px;
+    }
+    @media (max-width: 1100px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+    .panel {
+      background: var(--paper);
+      border: 1px solid var(--rule);
+      padding: 24px 28px;
+    }
+    .panel-strong {
+      border: 1px solid var(--rule-strong);
+    }
+    .panel-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--gap-md);
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--rule);
+    }
+    .panel-title {
+      font-family: var(--serif);
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: -0.005em;
+      color: var(--ink);
+    }
+    .panel-title em {
+      font-style: italic;
+      color: var(--ink-3);
+      font-weight: 400;
+    }
+    .panel-meta {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--ink-3);
+      letter-spacing: 0.05em;
+    }
+
+    /* ============================================================
+       Alert
+       ============================================================ */
+    .alert {
+      display: flex;
+      gap: var(--gap-md);
+      padding: 20px 24px;
+      background: #fff8f0;
+      border-left: 4px solid var(--data-red);
+      margin-bottom: 32px;
+    }
+    .alert-mark {
+      font-family: var(--serif);
+      font-size: 24px;
+      font-style: italic;
+      color: var(--data-red);
+      line-height: 1;
+    }
+    .alert-content {
+      flex: 1;
+    }
+    .alert-title {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--data-red);
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    .alert-msg {
+      font-family: var(--serif);
+      font-size: 15px;
+      color: var(--ink);
+      line-height: 1.5;
+    }
+
+    /* ============================================================
+       Topology SVG
+       ============================================================ */
+    #topoSvg {
+      width: 100%;
+      height: 380px;
+      background: var(--paper-2);
+      display: block;
+    }
+
+    /* ============================================================
+       DQN action distribution
+       ============================================================ */
+    .action-block { display: flex; flex-direction: column; gap: 18px; }
+    .action-row {
+      display: grid;
+      grid-template-columns: 90px 1fr 60px;
+      gap: 12px;
+      align-items: center;
+    }
+    .action-label {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--ink);
+      letter-spacing: 0.05em;
+      font-weight: 500;
+    }
+    .action-bar-track {
+      height: 8px;
+      background: var(--paper-3);
+      position: relative;
+      overflow: hidden;
+    }
+    .action-bar-fill {
+      height: 100%;
+      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .action-bar-fill.direct { background: var(--data-blue); }
+    .action-bar-fill.relay  { background: var(--data-amber); }
+    .action-pct {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--ink-2);
+      text-align: right;
+      font-feature-settings: 'tnum' 1;
+    }
+
+    .dqn-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px 24px;
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px dashed var(--rule);
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--ink-3);
+    }
+    .dqn-meta-grid div span {
+      color: var(--data-blue);
+      font-weight: 500;
+    }
+
+    /* ============================================================
+       Tables — newspaper style
+       ============================================================ */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead th {
+      text-align: left;
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      border-top: 1px solid var(--rule-strong);
+      border-bottom: 1px solid var(--rule-strong);
+      background: var(--paper);
+    }
+    tbody td {
+      padding: 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--ink);
+      border-bottom: 1px solid var(--rule);
+      vertical-align: middle;
+    }
+    tbody tr:hover td { background: var(--paper-2); }
+    tbody tr.high-risk td { background: #fff8f0; }
+    tbody tr.high-risk td:first-child {
+      box-shadow: inset 3px 0 0 var(--data-red);
+    }
+    tbody tr.offline td { color: var(--ink-4); }
+
+    .dot {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    .dot-good { background: var(--good); }
+    .dot-warn { background: var(--warn); }
+    .dot-bad  { background: var(--bad); }
+    .dot-off  { background: var(--ink-4); }
+
+    /* VoI labels */
+    .voi { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 0; }
+    .voi-S0 { color: var(--data-teal); border: 1px solid var(--data-teal); }
+    .voi-S1 { color: var(--data-amber); border: 1px solid var(--data-amber); }
+    .voi-S2 { color: var(--data-red); border: 1px solid var(--data-red); font-weight: 600; }
+    .voi-S3 { color: var(--data-violet); border: 1px solid var(--data-violet); }
+
+    /* tx pills */
+    .tx { font-family: var(--mono); font-size: 11px; padding: 2px 8px; }
+    .tx-LORA { background: var(--data-blue); color: var(--paper); }
+    .tx-WIFI { background: var(--data-amber); color: var(--paper); }
+
+    /* ============================================================
+       Event log — newsprint
+       ============================================================ */
+    .event-log {
+      max-height: 320px;
+      overflow-y: auto;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--ink);
+      background: var(--paper-2);
+      padding: 12px 16px;
+    }
+    .event-log > div {
+      display: grid;
+      grid-template-columns: 70px 80px 1fr;
+      gap: 10px;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--rule);
+      align-items: center;
+    }
+    .event-log > div:last-child { border-bottom: none; }
+    .ev-time { color: var(--ink-3); }
+    .ev-tag {
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      font-weight: 500;
+    }
+    .ev-tag.ROUTE { color: var(--data-teal); }
+    .ev-tag.RREQ  { color: var(--data-amber); }
+    .ev-tag.RREP  { color: var(--data-blue); }
+    .ev-tag.RERR, .ev-tag.EXPIRE { color: var(--data-red); }
+    .ev-desc { color: var(--ink-2); }
+
+    /* ============================================================
+       Charts
+       ============================================================ */
+    .chart-wrap {
+      position: relative;
+      height: 240px;
+    }
+
+    /* ============================================================
+       Energy panel
+       ============================================================ */
+    .energy-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0;
+      margin-bottom: 24px;
+      border: 1px solid var(--rule);
+    }
+    .energy-card {
+      padding: 16px 20px;
+      border-right: 1px solid var(--rule);
+      background: var(--paper);
+      position: relative;
+    }
+    .energy-card:last-child { border-right: none; }
+    .energy-card.active {
+      background: var(--paper-2);
+    }
+    .energy-card.active::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 2px;
+      background: var(--data-blue);
+    }
+    .energy-tag {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+    }
+    .energy-value {
+      font-family: var(--serif);
+      font-size: 26px;
+      font-weight: 500;
+      color: var(--ink);
+      letter-spacing: -0.01em;
+      margin-top: 6px;
+      font-feature-settings: 'tnum' 1;
+    }
+    .energy-value small {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--ink-3);
+      font-weight: 400;
+      letter-spacing: 0.05em;
+      margin-left: 4px;
+    }
+    .energy-meta {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--ink-3);
+      margin-top: 4px;
+    }
+
+    /* ============================================================
+       Empty state
+       ============================================================ */
+    .empty {
+      text-align: center;
+      padding: 32px 16px;
+      color: var(--ink-3);
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: 14px;
+    }
+
+    /* ============================================================
+       ★ v5.6 SCALABLE: Node chips & discovery log
+       ============================================================ */
+    .node-chip-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-height: 40px;
+      align-items: center;
+    }
+    .node-chip {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 4px 10px;
+      border: 1px solid var(--rule);
+      border-radius: 14px;
+      font-family: var(--mono);
+      font-size: 11px;
+      background: var(--paper);
+      color: var(--ink);
+      transition: background 0.15s;
+    }
+    .node-chip:hover {
+      background: var(--paper-warm);
+    }
+    .node-chip .chip-age {
+      font-size: 9px;
+      color: var(--ink-3);
+      letter-spacing: 0.05em;
+    }
+    .event-row {
+      display: grid;
+      grid-template-columns: 70px 90px 1fr;
+      gap: 12px;
+      padding: 6px 4px;
+      border-bottom: 1px dotted var(--rule);
+      font-family: var(--mono);
+      font-size: 11px;
+      align-items: baseline;
+    }
+    .event-row:last-child { border-bottom: none; }
+    .event-row .event-time {
+      color: var(--ink-3);
+      font-size: 10px;
+      letter-spacing: 0.05em;
+    }
+    .event-row .event-kind {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .event-row .event-detail {
+      color: var(--ink-2);
+    }
+    .stat-value.caution { color: var(--data-amber); }
+
+    /* ============================================================
+       Footer
+       ============================================================ */
+    .colophon {
+      margin-top: 80px;
+      padding-top: 32px;
+      border-top: 2px solid var(--rule-strong);
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 32px;
+    }
+    .colophon-info {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      line-height: 1.6;
+    }
+    .colophon-info .info-line {
+      display: block;
+      margin-bottom: 2px;
+    }
+    .colophon-info strong {
+      color: var(--ink);
+      font-weight: 500;
+    }
+    .colophon-mark {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    .colophon-mark .mark-chinese {
+      font-family: var(--serif);
+      font-size: 32px;
+      font-weight: 500;
+      color: var(--ink);
+      letter-spacing: 0.1em;
+      line-height: 1;
+    }
+    .colophon-mark .mark-en {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+    }
+    .colophon-meta {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      text-align: right;
+      line-height: 1.6;
+    }
+    @media (max-width: 700px) {
+      .colophon { grid-template-columns: 1fr; text-align: center; }
+      .colophon-meta { text-align: center; }
+    }
+
+    /* ============================================================
+       Margin column for sub-narratives (Tufte-style)
+       ============================================================ */
+    .margin-note {
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: 13px;
+      color: var(--ink-3);
+      line-height: 1.5;
+      padding: 12px 16px;
+      border-left: 2px solid var(--data-blue);
+      background: var(--paper-2);
+      margin: 16px 0;
+    }
+  </style>
+</head>
+<body>
+
+<div class="frame">
+
+  <!-- ==================== Masthead ==================== -->
+  <div class="masthead">
+    <div class="masthead-brand">
+      <div class="masthead-eyebrow">Vol. v5.6 · Issue 04 / 2026 · GCCE Edition</div>
+      <h1>南深橋 · <em>Observation Console</em></h1>
+    </div>
+    <div></div>
+    <div class="masthead-meta">
+      <div id="dateLine">— · —</div>
+      <div id="updateRate">awaiting telemetry</div>
+    </div>
+  </div>
+
+  <div class="masthead-tagline">
+    A real-time instrument panel for VoI-driven heterogeneous routing under
+    sub-surface flood monitoring conditions.
+  </div>
+
+  <!-- ==================== Status Strip ==================== -->
+  <div class="status-strip">
+    <span id="mqttStatus" class="status-pill error">MQTT · disconnected</span>
+    <div class="status-divider"></div>
+    <span id="currentTag" class="status-pill">tag: —</span>
+    <div class="status-divider"></div>
+    <span id="msgRate" class="status-pill">— msg/s</span>
+    <div class="status-divider"></div>
+    <span class="status-pill" style="color:var(--ink-3)">Filter</span>
+    <select id="tagFilter" class="status-dropdown">
+      <option value="ALL">All Tags</option>
+      <option value="VOI_DRIVEN">VOI_DRIVEN</option>
+      <option value="ALWAYS_LORA">ALWAYS_LORA</option>
+      <option value="ALWAYS_WIFI">ALWAYS_WIFI</option>
+      <option value="PERIODIC">PERIODIC</option>
+    </select>
+  </div>
+
+  <!-- ==================== § I  Architecture ==================== -->
+  <div class="section-header">
+    <span class="section-num">§ I</span>
+    <h2 class="section-title">Three-Layer Architecture</h2>
+    <span class="section-meta">VoI · DQN · AODV</span>
+  </div>
+
+  <div class="arch">
+    <div class="arch-cell">
+      <div class="arch-step">Layer 01 — Hard Rule</div>
+      <div class="arch-name">VoI Selector <em>语义路由</em></div>
+      <div class="arch-value" id="voiSummary">S0 / S1 / S3 → LoRa &nbsp;·&nbsp; S2 → WiFi</div>
+    </div>
+    <div class="arch-cell">
+      <div class="arch-step">Layer 02 — Learning</div>
+      <div class="arch-name">DQN Decision <em>直連 vs 中繼</em></div>
+      <div class="arch-value" id="dqnSummary">— direct &nbsp;·&nbsp; — relay</div>
+    </div>
+    <div class="arch-cell">
+      <div class="arch-step">Layer 03 — Lookup</div>
+      <div class="arch-name">AODV Routing <em>最佳下一跳</em></div>
+      <div class="arch-value" id="aodvSummary">— routes &nbsp;·&nbsp; 0 high-risk</div>
+    </div>
+  </div>
+
+  <!-- ==================== § II  Vital Signs ==================== -->
+  <div class="section-header">
+    <span class="section-num">§ II</span>
+    <h2 class="section-title">Vital Signs</h2>
+    <span class="section-meta">Updated every 1 s</span>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-tile">
+      <div class="stat-label">Online Nodes</div>
+      <div class="stat-value" id="totalNodes">0</div>
+      <div class="stat-meta" id="totalNodesMeta">of 3 managed</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-label">Node Capacity</div>
+      <div class="stat-value" id="nodeCapacity">—</div>
+      <div class="stat-meta" id="nodeCapacityMeta">auto-discovery</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-label">Avg Water (m)</div>
+      <div class="stat-value" id="avgWater">—</div>
+      <div class="stat-meta" id="waterMeta">range —</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-label">Alerts (S2)</div>
+      <div class="stat-value" id="alertCount">0</div>
+      <div class="stat-meta">flood watch</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-label">Multi-Hop</div>
+      <div class="stat-value" id="multiHop">0</div>
+      <div class="stat-meta" id="hopMeta">direct / via relay</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-label">DQN Steps</div>
+      <div class="stat-value" id="dqnSteps">0</div>
+      <div class="stat-meta">trains every 5 min</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-label">ε Exploration</div>
+      <div class="stat-value" id="dqnEps">—</div>
+      <div class="stat-meta">→ 0.03 floor</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-label">Loss EMA</div>
+      <div class="stat-value" id="dqnLoss">—</div>
+      <div class="stat-meta">lower is better</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-label">Avg RSSI</div>
+      <div class="stat-value" id="avgRssi">—</div>
+      <div class="stat-meta" id="rssiMeta">dBm</div>
+    </div>
+  </div>
+
+  <!-- Alert area -->
+  <div id="alertArea" class="alert" style="display:none;">
+    <div class="alert-mark">!</div>
+    <div class="alert-content">
+      <div class="alert-title">Flood Alert · S2 Detected</div>
+      <div id="alertMessages" class="alert-msg"></div>
+    </div>
+  </div>
+
+  <!-- ==================== § III  Network Topology ==================== -->
+  <div class="section-header">
+    <span class="section-num">§ III</span>
+    <h2 class="section-title">Network Topology &amp; DQN Behaviour</h2>
+    <span class="section-meta">Live mesh state</span>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel panel-strong">
+      <div class="panel-header">
+        <div class="panel-title">Topology Map <em>edge weight = RSSI</em></div>
+        <div class="panel-meta">FIG. 01</div>
+      </div>
+      <svg id="topoSvg" viewBox="0 0 700 380" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">DQN Action Distribution <em>actual vs intended</em></div>
+        <div class="panel-meta">FIG. 02</div>
+      </div>
+      <div class="margin-note" style="margin-top:0;">
+        Bars show what the leaf <em>actually</em> did; the table below
+        shows what the DQN <em>recommended</em> (ε-greedy includes exploration).
+      </div>
+      <div id="actionBars" class="action-block"></div>
+      <div class="dqn-meta-grid">
+        <div>experiment <span id="dqnTag">—</span></div>
+        <div>replay <span id="dqnReplay">0</span></div>
+        <div>pending <span id="dqnPending">0</span></div>
+        <div>avg Q <span id="dqnAvgQ">—</span></div>
+        <div>loss <span id="dqnLossInline">—</span></div>
+        <div>steps <span id="dqnStepsInline">0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== § IV  Energy Comparison ==================== -->
+  <div class="section-header">
+    <span class="section-num">§ IV</span>
+    <h2 class="section-title">Cumulative Energy by Strategy</h2>
+    <span class="section-meta">GCCE Fig. 2 source</span>
+  </div>
+
+  <div class="panel panel-strong">
+    <div class="panel-header">
+      <div class="panel-title">Per-Tag Energy Snapshot</div>
+      <div class="panel-meta">PUBLISHED EVERY 60 s</div>
+    </div>
+    <div class="energy-summary" id="energySummary">
+      <div class="empty" style="grid-column:1/-1;">awaiting <code>sensor/sink/energy</code> …</div>
+    </div>
+    <div class="chart-wrap" style="height:300px;">
+      <canvas id="energyChart"></canvas>
+    </div>
+  </div>
+
+  <!-- ==================== § V  Node Status ==================== -->
+  <div class="section-header">
+    <span class="section-num">§ V</span>
+    <h2 class="section-title">Node Roster</h2>
+    <span class="section-meta">Offline marker after 120 s</span>
+  </div>
+
+  <div class="panel">
+    <div style="overflow-x:auto;">
+      <table id="nodesTable">
+        <thead>
+          <tr>
+            <th>Node</th><th>VoI</th><th>Water (m)</th>
+            <th>Transport</th><th>Link</th><th>RSSI</th>
+            <th>Success</th><th>Rx</th><th>Hops</th>
+            <th>Next Hop</th><th>Risk</th><th>Last Seen</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <tr><td colspan="12" class="empty">awaiting node data …</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ==================== § VI  Routing & Events ==================== -->
+  <div class="section-header">
+    <span class="section-num">§ VI</span>
+    <h2 class="section-title">Routing &amp; AODV Events</h2>
+    <span class="section-meta">Sink's view</span>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">AODV Route Table</div>
+        <div class="panel-meta">RED = HIGH-RISK</div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>dst</th><th>next_hop</th><th>hops</th>
+              <th>RSSI</th><th>risk</th><th>cost</th>
+              <th>tx normal</th><th>tx alert</th>
+            </tr>
+          </thead>
+          <tbody id="routeTableBody">
+            <tr><td colspan="8" class="empty">awaiting <code>route_table</code> …</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Event Stream <em>most recent 80</em></div>
+        <div class="panel-meta">DEDUP ENABLED</div>
+      </div>
+      <div class="event-log" id="aodvEvents">
+        <div style="border:none; color:var(--ink-3); font-family: var(--serif); font-style: italic;">awaiting events …</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== § VII  Trends ==================== -->
+  <div class="section-header">
+    <span class="section-num">§ VII</span>
+    <h2 class="section-title">Time Series</h2>
+    <span class="section-meta">last 80 samples</span>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Water Level <em>per node</em></div>
+        <div class="panel-meta">FIG. 03 · METRES</div>
+      </div>
+      <div class="chart-wrap"><canvas id="waterChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">RSSI <em>per node</em></div>
+        <div class="panel-meta">FIG. 04 · DBM</div>
+      </div>
+      <div class="chart-wrap"><canvas id="rssiChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Transport Distribution</div>
+        <div class="panel-meta">FIG. 05</div>
+      </div>
+      <div class="chart-wrap"><canvas id="transportChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Link Class Usage</div>
+        <div class="panel-meta">FIG. 06</div>
+      </div>
+      <div class="chart-wrap"><canvas id="linkChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ==================== § VIII  Fallback Stats ==================== -->
+  <div class="section-header">
+    <span class="section-num">§ VIII</span>
+    <h2 class="section-title">Fallback &amp; Resilience</h2>
+    <span class="section-meta">LoRa → WiFi auto-recovery</span>
+  </div>
+
+  <div class="margin-note" style="margin-top:0;">
+    When LoRa fails consecutively for 3 packets, the leaf
+    <em>automatically switches to WiFi</em> and probes LoRa every 60 s.
+    Recovery is automatic — no manual intervention required.
+  </div>
+
+  <div class="grid-2">
+    <div class="panel panel-strong">
+      <div class="panel-header">
+        <div class="panel-title">Per-Node Fallback State <em>live</em></div>
+        <div class="panel-meta">FIG. 07</div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table id="fallbackTable">
+          <thead>
+            <tr>
+              <th>Node</th><th>State</th>
+              <th>Enter Cnt</th><th>Recover Cnt</th>
+              <th>Pending</th><th>Resent</th>
+              <th>Last Update</th>
+            </tr>
+          </thead>
+          <tbody id="fallbackTableBody">
+            <tr><td colspan="7" class="empty">awaiting <code>sensor/sink/fallback_stats</code> …</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Aggregate Resilience Metrics</div>
+        <div class="panel-meta">SUMMARY</div>
+      </div>
+      <div class="stat-grid" style="margin:0; border:none;">
+        <div class="stat-tile" style="border:1px solid var(--rule);">
+          <div class="stat-label">Nodes in Fallback</div>
+          <div class="stat-value" id="fbInActive">0</div>
+          <div class="stat-meta">currently using WiFi</div>
+        </div>
+        <div class="stat-tile" style="border:1px solid var(--rule);">
+          <div class="stat-label">Total Enter</div>
+          <div class="stat-value" id="fbTotalEnter">0</div>
+          <div class="stat-meta">cumulative events</div>
+        </div>
+        <div class="stat-tile" style="border:1px solid var(--rule);">
+          <div class="stat-label">Total Recover</div>
+          <div class="stat-value" id="fbTotalRecover">0</div>
+          <div class="stat-meta">LoRa came back</div>
+        </div>
+        <div class="stat-tile" style="border:1px solid var(--rule);">
+          <div class="stat-label">Pending Now</div>
+          <div class="stat-value" id="fbTotalPending">0</div>
+          <div class="stat-meta">queued packets</div>
+        </div>
+        <div class="stat-tile" style="border:1px solid var(--rule);">
+          <div class="stat-label">Resent Total</div>
+          <div class="stat-value" id="fbTotalResent">0</div>
+          <div class="stat-meta">recovered packets</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== § IX  Node Discovery ==================== -->
+  <div class="section-header">
+    <span class="section-num">§ IX</span>
+    <h2 class="section-title">Node Discovery &amp; Scalability</h2>
+    <span class="section-meta">auto-join · capacity 32 · v5.6</span>
+  </div>
+
+  <div class="margin-note" style="margin-top:0;">
+    The sink maintains a dynamic registry of nodes. Any node — including ones
+    unknown at compile time — will <em>automatically join</em> the mesh upon its first
+    packet (or <code>NODE_HELLO</code> broadcast at boot). Nodes inactive for 3
+    minutes become <em>stale</em> and are removed after 10 minutes of silence.
+    This allows up to 32 nodes to be added or removed without reconfiguring the sink.
+  </div>
+
+  <div class="grid-2">
+    <div class="panel panel-strong">
+      <div class="panel-header">
+        <div class="panel-title">Node Status Groups <em>live</em></div>
+        <div class="panel-meta">FIG. 08</div>
+      </div>
+      <div style="padding: 8px 0;">
+        <div style="font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px;">
+          Active <span style="color:var(--data-teal);">●</span>
+        </div>
+        <div id="activeNodesGroup" class="node-chip-group">
+          <div class="empty">awaiting known_nodes …</div>
+        </div>
+        <div style="font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); margin: 16px 0 8px;">
+          Stale <span style="color:var(--data-amber);">○</span>
+          <span style="color:var(--ink-3); text-transform:none; letter-spacing:0; font-size:10px;"> — silent &gt; 3 min, still tracked</span>
+        </div>
+        <div id="staleNodesGroup" class="node-chip-group">
+          <div class="empty">no stale nodes</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Discovery Event Log</div>
+        <div class="panel-meta">most recent 30</div>
+      </div>
+      <div id="discoveryLog" style="max-height: 340px; overflow-y: auto; padding-top: 4px;">
+        <div class="empty">awaiting node events …</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== Colophon ==================== -->
+  <div class="colophon">
+    <div class="colophon-info">
+      <span class="info-line"><strong>南深橋 Bridge Monitor</strong></span>
+      <span class="info-line">Compiled by N1 sink · v5.6-scalable</span>
+      <span class="info-line">Topic-2 — Heterogeneous routing with energy-aware switching</span>
+    </div>
+    <div class="colophon-mark">
+      <div class="mark-chinese">南深橋</div>
+      <div class="mark-en">Nansen Bridge</div>
+    </div>
+    <div class="colophon-meta">
+      <span class="info-line">GCCE 2026</span>
+      <span class="info-line">VoI · DQN · AODV</span>
+      <span class="info-line">© 洪俊森 · NTNU</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ==============================================================
+   Configuration
+   ============================================================== */
+const CONFIG = {
+  MQTT_BROKER:        "ws://192.168.0.11:9001",
+  MANAGED_NODES:      [2, 3, 4],   // ★ v5.6: fallback only, 真實清單從 getActiveNodes() 取
+  NODE_TIMEOUT_MS:    120 * 1000,
+  CHART_REFRESH_MS:   2000,
+  TOPO_REFRESH_MS:    1500,
+  TABLE_REFRESH_MS:   1000,
+  HISTORY_MAX_POINTS: 80,
+  ENERGY_HISTORY_MAX: 240,
+  EVENT_LOG_MAX:      80,
+};
+
+/* ★ v5.6 SCALABLE: 動態取得當前節點清單
+   優先順序: knownNodes (來自 sink) > nodesData (來自 leaf 訊息) > CONFIG 預設 */
+function getActiveNodes() {
+  // 1. 若 sink 有 publish known_nodes,用它
+  if (state.knownNodes && Array.isArray(state.knownNodes.active)) {
+    return [...state.knownNodes.active].sort((a, b) => a - b);
+  }
+  // 2. 從 nodesData 推斷(每個有訊息的 leaf)
+  if (state.nodesData && state.nodesData.size > 0) {
+    const ids = [];
+    state.nodesData.forEach((_, key) => {
+      const m = key.match(/node_0*(\d+)/);
+      if (m) ids.push(parseInt(m[1]));
+    });
+    if (ids.length > 0) return ids.sort((a, b) => a - b);
+  }
+  // 3. Fallback 預設
+  return [...CONFIG.MANAGED_NODES];
+}
+
+function getAllTrackedNodes() {
+  // 包含 stale 的,供拓撲圖顯示灰色節點
+  const active = getActiveNodes();
+  const stale = state.knownNodes?.stale || [];
+  const all = [...new Set([...active, ...stale])].sort((a, b) => a - b);
+  return { active, stale, all };
+}
+
+/* ★ v5.6 SCALABLE: 依節點數自適應佈局
+   1-3   → 三角形 (triangle)
+   4-8   → 單環 (single ring)
+   9-20  → 雙環 (dual concentric rings)
+   21-32 → 力導向 (force-directed, velocity Verlet)
+*/
+function computeTopologyLayout(leafs, cx, cy) {
+  const n = leafs.length;
+  const positions = {};
+  if (n === 0) return positions;
+
+  if (n <= 3) {
+    // 三角形:頂點朝下
+    const R = 120;
+    const base = -Math.PI / 2;
+    leafs.forEach((nid, i) => {
+      const angle = base + (i * 2 * Math.PI / Math.max(n, 1));
+      positions[nid] = {
+        x: cx + R * Math.cos(angle),
+        y: cy + R * Math.sin(angle),
+      };
+    });
+    return positions;
+  }
+
+  if (n <= 8) {
+    // 單環
+    const R = 150;
+    leafs.forEach((nid, i) => {
+      const angle = -Math.PI / 2 + (i * 2 * Math.PI / n);
+      positions[nid] = {
+        x: cx + R * Math.cos(angle),
+        y: cy + R * Math.sin(angle),
+      };
+    });
+    return positions;
+  }
+
+  if (n <= 20) {
+    // 雙環:內圈 40%,外圈 60%
+    const nInner = Math.ceil(n * 0.4);
+    const nOuter = n - nInner;
+    const Rinner = 90;
+    const Router = 175;
+    leafs.forEach((nid, i) => {
+      let angle, R;
+      if (i < nInner) {
+        angle = -Math.PI / 2 + (i * 2 * Math.PI / nInner);
+        R = Rinner;
+      } else {
+        const j = i - nInner;
+        angle = -Math.PI / 2 + Math.PI / nOuter + (j * 2 * Math.PI / nOuter);
+        R = Router;
+      }
+      positions[nid] = {
+        x: cx + R * Math.cos(angle),
+        y: cy + R * Math.sin(angle),
+      };
+    });
+    return positions;
+  }
+
+  // 力導向 (21-32): velocity Verlet 簡化算法
+  // 每次只跑幾個 iteration 並快取結果,避免每秒重算
+  return forceDirectedLayout(leafs, cx, cy);
+}
+
+/* Force-directed layout using velocity Verlet.
+   Anchors: sink at (cx, cy). Leafs repel each other, attracted to sink.
+   Cached in state.nodePositions — only fresh nodes are initialized.
+*/
+function forceDirectedLayout(leafs, cx, cy) {
+  const cache = state.nodePositions;
+  const R0 = 170;      // 理想距 sink 的半徑
+  const repel = 1400;  // 節點互斥強度
+  const attract = 0.015;   // 拉向 sink 的彈簧常數
+  const damping = 0.82;
+  const iterations = 24;
+
+  // 初始化缺的節點(螺旋排列避免疊加)
+  leafs.forEach((nid, i) => {
+    if (!cache.has(nid)) {
+      const angle = i * 2.39996; // golden angle 弧度
+      const r = R0 * (0.4 + 0.6 * Math.random());
+      cache.set(nid, {
+        x: cx + r * Math.cos(angle),
+        y: cy + r * Math.sin(angle),
+        vx: 0, vy: 0,
+      });
+    }
+  });
+  // 移除已不存在的節點
+  Array.from(cache.keys()).forEach(k => {
+    if (!leafs.includes(k)) cache.delete(k);
+  });
+
+  // 迭代
+  for (let iter = 0; iter < iterations; iter++) {
+    // 互斥力
+    for (let i = 0; i < leafs.length; i++) {
+      const a = cache.get(leafs[i]);
+      let fx = 0, fy = 0;
+      for (let j = 0; j < leafs.length; j++) {
+        if (i === j) continue;
+        const b = cache.get(leafs[j]);
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        const d2 = dx * dx + dy * dy + 0.1;
+        const f = repel / d2;
+        fx += f * dx / Math.sqrt(d2);
+        fy += f * dy / Math.sqrt(d2);
+      }
+      // 向 sink 的向心彈簧 (目標距離 R0)
+      const dx = a.x - cx;
+      const dy = a.y - cy;
+      const d = Math.sqrt(dx * dx + dy * dy) + 0.01;
+      const targetDelta = (d - R0);
+      fx -= attract * targetDelta * dx / d;
+      fy -= attract * targetDelta * dy / d;
+
+      a.vx = (a.vx + fx * 0.05) * damping;
+      a.vy = (a.vy + fy * 0.05) * damping;
+    }
+    // 更新位置
+    leafs.forEach(nid => {
+      const p = cache.get(nid);
+      p.x += p.vx;
+      p.y += p.vy;
+      // 邊界 clamp (避免跑出 SVG)
+      p.x = Math.max(cx - 260, Math.min(cx + 260, p.x));
+      p.y = Math.max(cy - 180, Math.min(cy + 180, p.y));
+    });
+  }
+
+  // 輸出 positions
+  const positions = {};
+  leafs.forEach(nid => {
+    const p = cache.get(nid);
+    positions[nid] = { x: p.x, y: p.y };
+  });
+  return positions;
+}
+
+/* Editorial palette tokens — MUST match CSS vars */
+const COLORS = {
+  ink:        '#1a1a1a',
+  ink2:       '#444444',
+  ink3:       '#6e6e6e',
+  ink4:       '#999999',
+  rule:       '#d9d3c4',
+  paper:      '#faf8f3',
+  paper2:     '#f3efe6',
+  blue:       '#1f3b66',
+  teal:       '#186f5f',
+  amber:      '#b46524',
+  red:        '#962d2d',
+  violet:     '#5a3d72',
+};
+
+const TAG_COLORS = {
+  VOI_DRIVEN:  COLORS.teal,
+  ALWAYS_LORA: COLORS.blue,
+  ALWAYS_WIFI: COLORS.amber,
+  PERIODIC:    COLORS.violet,
+};
+
+const NODE_COLORS = [COLORS.blue, COLORS.teal, COLORS.amber, COLORS.violet, COLORS.red];
+
+/* ==============================================================
+   State
+   ============================================================== */
+const state = {
+  nodesData:       new Map(),
+  hopInfo:         new Map(),
+  routeTable:      {},
+  aodvEvents:      [],
+  dqnState:        {},
+  energyByTag:     {},
+  fallbackStats:   null,    /* ★ v5.6 */
+  waterHistory:    new Map(),
+  rssiHistory:     new Map(),
+  transportCounts: { WIFI: 0, LORA: 0 },
+  linkCounts:      { A: 0, B: 0, C: 0, D: 0 },
+  msgCounter:      { count: 0, lastReset: Date.now() },
+  currentTag:      null,
+  filterTag:       'ALL',
+
+  /* ★ v5.6 SCALABLE: 動態節點管理 */
+  knownNodes:      null,     // sensor/sink/known_nodes 最新載入
+  nodeCapacity:    { current: 0, max: 32 },
+  discoveryLog:    [],       // 節點加入/離開事件累積(最新 50 筆)
+  seenEventIds:    new Set(),// 事件去重(避免 republish 重複顯示)
+  nodePositions:   new Map(),// 力導向算法的節點位置快取
+};
+
+/* ==============================================================
+   Utilities
+   ============================================================== */
+const $ = (id) => document.getElementById(id);
+const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+
+function fmtNum(n, digits = 1) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  return Number(n).toFixed(digits);
+}
+
+function fmtAge(ms) {
+  if (!ms || ms < 0) return '—';
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60)   return sec + 's';
+  if (sec < 3600) return Math.floor(sec / 60) + 'm';
+  return Math.floor(sec / 3600) + 'h';
+}
+
+function shortVoi(s) {
+  if (!s) return 'S0';
+  return s.length >= 2 && s[0] === 'S' ? s.substring(0, 2) : s;
+}
+
+function nodeColor(nid) {
+  const idx = (parseInt(nid, 10) || 0) % NODE_COLORS.length;
+  return NODE_COLORS[idx];
+}
+
+function pushHistory(map, key, value, maxLen) {
+  if (!map.has(key)) map.set(key, []);
+  const arr = map.get(key);
+  arr.push(value);
+  while (arr.length > maxLen) arr.shift();
+}
+
+function makeThrottled(fn, interval) {
+  let scheduled = false; let lastRun = 0;
+  return function() {
+    if (scheduled) return;
+    const wait = Math.max(0, interval - (Date.now() - lastRun));
+    scheduled = true;
+    setTimeout(() => {
+      scheduled = false; lastRun = Date.now();
+      try { fn(); } catch(e) { console.error('Render error:', e); }
+    }, wait);
+  };
+}
+
+/* ==============================================================
+   Date line update
+   ============================================================== */
+function updateDateLine() {
+  const d = new Date();
+  const opts = { year: 'numeric', month: 'short', day: 'numeric' };
+  const time = String(d.getHours()).padStart(2, '0') + ':' +
+               String(d.getMinutes()).padStart(2, '0') + ':' +
+               String(d.getSeconds()).padStart(2, '0');
+  $('dateLine').textContent = d.toLocaleDateString('en-GB', opts) + ' · ' + time;
+}
+setInterval(updateDateLine, 1000); updateDateLine();
+
+/* ==============================================================
+   Chart.js shared options — editorial style
+   ============================================================== */
+const CHART_COMMON = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 300 },
+  plugins: {
+    legend: {
+      labels: {
+        color: COLORS.ink2,
+        font: { size: 11, family: 'JetBrains Mono, monospace' },
+        boxWidth: 14, boxHeight: 2, padding: 14,
+      },
+    },
+    tooltip: {
+      backgroundColor: COLORS.paper,
+      titleColor: COLORS.ink,
+      bodyColor: COLORS.ink2,
+      borderColor: COLORS.rule,
+      borderWidth: 1,
+      cornerRadius: 0,
+      titleFont: { family: 'Fraunces, serif', size: 13, weight: '500' },
+      bodyFont: { family: 'JetBrains Mono, monospace', size: 11 },
+      padding: 10,
+    },
+  },
+  scales: {
+    x: {
+      ticks: { color: COLORS.ink3, font: { size: 10, family: 'JetBrains Mono, monospace' } },
+      grid:  { color: COLORS.rule, drawBorder: false },
+      border: { color: COLORS.rule },
+    },
+    y: {
+      ticks: { color: COLORS.ink3, font: { size: 10, family: 'JetBrains Mono, monospace' } },
+      grid:  { color: COLORS.rule, drawBorder: false },
+      border: { color: COLORS.rule },
+    },
+  },
+};
+
+let waterChart, rssiChart, transportChart, linkChart, energyChart;
+
+function initCharts() {
+  waterChart = new Chart($('waterChart').getContext('2d'), {
+    type: 'line', data: { labels: [], datasets: [] },
+    options: { ...CHART_COMMON,
+      scales: { ...CHART_COMMON.scales,
+        y: { ...CHART_COMMON.scales.y,
+             title: { display: true, text: 'water level (m)', color: COLORS.ink3,
+                      font: { family: 'JetBrains Mono', size: 10 } } } } },
+  });
+
+  rssiChart = new Chart($('rssiChart').getContext('2d'), {
+    type: 'line', data: { labels: [], datasets: [] },
+    options: { ...CHART_COMMON,
+      scales: { ...CHART_COMMON.scales,
+        y: { ...CHART_COMMON.scales.y, suggestedMin: -120, suggestedMax: -30,
+             title: { display: true, text: 'RSSI (dBm)', color: COLORS.ink3,
+                      font: { family: 'JetBrains Mono', size: 10 } } } } },
+  });
+
+  transportChart = new Chart($('transportChart').getContext('2d'), {
+    type: 'doughnut',
+    data: { labels: ['WiFi', 'LoRa'],
+            datasets: [{ data: [0, 0],
+                         backgroundColor: [COLORS.amber, COLORS.blue],
+                         borderColor: COLORS.paper, borderWidth: 2 }] },
+    options: { ...CHART_COMMON, cutout: '62%',
+      plugins: { ...CHART_COMMON.plugins,
+        legend: { ...CHART_COMMON.plugins.legend, position: 'bottom' } },
+      scales: {} },
+  });
+
+  linkChart = new Chart($('linkChart').getContext('2d'), {
+      type: 'bar',
+      // ★ v5.6.7: 依 VoI 嚴重性 S0→S1→S2→S3 遞增排序
+      //   S0=B(LoRa-SF9) · S1=C(WiFi-ECO) · S2=A(WiFi-STD) · S3=D(LoRa-SF12)
+      data: { labels: ['B LoRa-SF9', 'C WiFi-ECO', 'A WiFi-STD', 'D LoRa-SF12'],
+              datasets: [{ data: [0, 0, 0, 0],
+                          backgroundColor: [COLORS.blue, COLORS.violet, COLORS.amber, COLORS.red],
+                          borderRadius: 0 }] },
+      options: { ...CHART_COMMON,
+        plugins: { ...CHART_COMMON.plugins, legend: { display: false } } },
+    });
+
+  energyChart = new Chart($('energyChart').getContext('2d'), {
+    type: 'line', data: { labels: [], datasets: [] },
+    options: { ...CHART_COMMON,
+      scales: { ...CHART_COMMON.scales,
+        y: { ...CHART_COMMON.scales.y,
+             title: { display: true, text: 'cumulative energy (mJ)',
+                      color: COLORS.ink3,
+                      font: { family: 'JetBrains Mono', size: 10 } } } } },
+  });
+}
+
+/* ==============================================================
+   Topology renderer (editorial style)
+   ============================================================== */
+function drawTopology() {
+  const svg = $('topoSvg');
+  if (!svg) return;
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  const W = 700, H = 380;
+  const cx = W/2, cy = H/2;
+  const sinkR = 26, leafR = 22;
+
+  // Defs
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  defs.innerHTML = `
+    <marker id="arrowK" markerWidth="6" markerHeight="6" refX="5" refY="3"
+            orient="auto" markerUnits="strokeWidth">
+      <polygon points="0,0 5,3 0,6" fill="${COLORS.ink2}"/>
+    </marker>
+    <marker id="arrowR" markerWidth="6" markerHeight="6" refX="5" refY="3"
+            orient="auto" markerUnits="strokeWidth">
+      <polygon points="0,0 5,3 0,6" fill="${COLORS.red}"/>
+    </marker>
+  `;
+  svg.appendChild(defs);
+
+  // Sink
+  const sg = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  sg.innerHTML = `
+    <circle cx="${cx}" cy="${cy}" r="${sinkR + 8}"
+            fill="none" stroke="${COLORS.ink}" stroke-width="0.5" stroke-dasharray="2,3"/>
+    <circle cx="${cx}" cy="${cy}" r="${sinkR}"
+            fill="${COLORS.ink}" stroke="${COLORS.ink}"/>
+    <text x="${cx}" y="${cy + 5}" text-anchor="middle"
+          font-family="Fraunces" font-style="italic" fill="${COLORS.paper}" font-size="16">N1</text>
+    <text x="${cx}" y="${cy + sinkR + 18}" text-anchor="middle"
+          font-family="JetBrains Mono" fill="${COLORS.ink3}" font-size="10"
+          letter-spacing="2">SINK</text>
+  `;
+  svg.appendChild(sg);
+
+  // ★ v5.6 SCALABLE: 從動態註冊取 leafs,並依節點數選佈局
+  const { active: activeLeafs, stale: staleLeafs, all: allLeafs } = getAllTrackedNodes();
+  const leafs = allLeafs;
+  const positions = computeTopologyLayout(leafs, cx, cy);
+
+  // Edges
+  leafs.forEach(nid => {
+    const pos = positions[nid];
+    const hi = state.hopInfo.get(String(nid)) || {};
+    const route = state.routeTable[String(nid)] || {};
+    const rssi = hi.rssi ?? route.rssi ?? -100;
+    const risk = hi.risk ?? route.risk ?? 0;
+    const hops = hi.hops ?? route.hops ?? 1;
+    const nh   = hi.nh   ?? route.nh   ?? null;
+    const isHighRisk = (route.high_risk === 1) || (risk > 0.6);
+
+    const w = clamp(((rssi + 120) / 90) * 3 + 0.8, 0.8, 3.5);
+    const lineColor = isHighRisk ? COLORS.red : COLORS.ink2;
+    const dash = isHighRisk ? '5,3' : '';
+    const marker = isHighRisk ? 'url(#arrowR)' : 'url(#arrowK)';
+    const opacity = isHighRisk ? 0.85 : 0.6;
+
+    if (hops > 1 && nh && nh !== 1 && positions[nh]) {
+      // ★ v5.6.3: Multi-hop relay 路徑 — 畫成兩段強調視覺
+      const nhPos = positions[nh];
+      // 第 1 段:leaf → relay (虛線,橘色,標示 RELAY)
+      const seg1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      seg1.setAttribute('x1', pos.x); seg1.setAttribute('y1', pos.y);
+      seg1.setAttribute('x2', nhPos.x); seg1.setAttribute('y2', nhPos.y);
+      seg1.setAttribute('stroke', isHighRisk ? COLORS.red : COLORS.amber);
+      seg1.setAttribute('stroke-width', w);
+      seg1.setAttribute('stroke-dasharray', '6,4');
+      seg1.setAttribute('marker-end', marker);
+      seg1.setAttribute('opacity', 0.85);
+      svg.appendChild(seg1);
+      // 第 2 段:relay → sink (實線)
+      const seg2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      seg2.setAttribute('x1', nhPos.x); seg2.setAttribute('y1', nhPos.y);
+      seg2.setAttribute('x2', cx); seg2.setAttribute('y2', cy);
+      seg2.setAttribute('stroke', isHighRisk ? COLORS.red : COLORS.teal);
+      seg2.setAttribute('stroke-width', w);
+      seg2.setAttribute('marker-end', marker);
+      seg2.setAttribute('opacity', 0.85);
+      svg.appendChild(seg2);
+      // "RELAY" 中繼標記
+      const relayMidX = (pos.x + nhPos.x) / 2;
+      const relayMidY = (pos.y + nhPos.y) / 2;
+      const relayLbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      relayLbl.setAttribute('x', relayMidX);
+      relayLbl.setAttribute('y', relayMidY - 4);
+      relayLbl.setAttribute('text-anchor', 'middle');
+      relayLbl.setAttribute('fill', COLORS.amber);
+      relayLbl.setAttribute('font-size', '8');
+      relayLbl.setAttribute('font-family', 'JetBrains Mono');
+      relayLbl.setAttribute('letter-spacing', '1.5');
+      relayLbl.textContent = 'RELAY';
+      svg.appendChild(relayLbl);
+    } else {
+      const e = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      e.setAttribute('x1', pos.x); e.setAttribute('y1', pos.y);
+      e.setAttribute('x2', cx); e.setAttribute('y2', cy);
+      e.setAttribute('stroke', lineColor);
+      e.setAttribute('stroke-width', w);
+      e.setAttribute('stroke-dasharray', dash);
+      e.setAttribute('marker-end', marker);
+      e.setAttribute('opacity', opacity);
+      svg.appendChild(e);
+    }
+
+    // RSSI + hops label
+    const midX = (pos.x + cx) / 2;
+    const midY = (pos.y + cy) / 2;
+    const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    lbl.setAttribute('x', midX);
+    lbl.setAttribute('y', midY - 6);
+    lbl.setAttribute('text-anchor', 'middle');
+    lbl.setAttribute('fill', hops > 1 ? COLORS.amber : COLORS.ink3);
+    lbl.setAttribute('font-size', '10');
+    lbl.setAttribute('font-family', 'JetBrains Mono');
+    lbl.setAttribute('font-weight', hops > 1 ? '600' : '400');
+    lbl.textContent = `${Math.round(rssi)}dBm·h${hops}`;
+    svg.appendChild(lbl);
+  });
+
+  // Leaves — ★ v5.6: 依 active/stale 狀態改變渲染
+  // 節點數量 > 15 時自動縮小 leaf radius,避免重疊
+  const leafRadius = leafs.length > 20 ? 13 : (leafs.length > 8 ? 16 : leafR);
+  const fontSize = leafs.length > 20 ? 10 : (leafs.length > 8 ? 12 : 14);
+  leafs.forEach(nid => {
+    const pos = positions[nid];
+    const node = state.nodesData.get('node_' + String(nid).padStart(2, '0')) || {};
+    const age  = Date.now() - (node.lastUpdate || 0);
+    const offline = age > CONFIG.NODE_TIMEOUT_MS;
+    const isStale = staleLeafs.includes(nid);
+    const voi = shortVoi(node.state || node.voi_state);
+    // stale → 灰色半透明;offline → ink4;其餘依 voi
+    const fillColor = (offline || isStale) ? COLORS.ink4 :
+                      voi === 'S2' ? COLORS.red :
+                      voi === 'S1' ? COLORS.amber :
+                      voi === 'S3' ? COLORS.violet : COLORS.teal;
+    const strokeColor = (offline || isStale) ? COLORS.ink4 : COLORS.ink;
+    const opacity = isStale ? 0.55 : 1.0;
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('opacity', opacity);
+    const meta = state.knownNodes?.nodes_meta?.['node_' + String(nid).padStart(2, '0')] || {};
+    const tt = [
+      `N${nid}`,
+      meta.first_seen ? `since boot: ${Math.floor((state.knownNodes.ts - meta.first_seen)/1000)}s` : '',
+      meta.total_pkts ? `packets: ${meta.total_pkts}` : '',
+      isStale ? 'stale (silent >3min)' : '',
+      offline ? 'offline' : '',
+    ].filter(Boolean).join('\n');
+    g.innerHTML = `
+      <title>${tt}</title>
+      <circle cx="${pos.x}" cy="${pos.y}" r="${leafRadius + 5}"
+              fill="${COLORS.paper}" stroke="${strokeColor}" stroke-width="0.5"
+              stroke-dasharray="2,3"/>
+      <circle cx="${pos.x}" cy="${pos.y}" r="${leafRadius}"
+              fill="${fillColor}" stroke="${strokeColor}" stroke-width="1"/>
+      <text x="${pos.x}" y="${pos.y + 5}" text-anchor="middle"
+            font-family="Fraunces" font-style="italic" fill="${COLORS.paper}"
+            font-size="${fontSize}">N${nid}</text>
+      <text x="${pos.x}" y="${pos.y + leafRadius + 16}" text-anchor="middle"
+            font-family="JetBrains Mono" fill="${COLORS.ink3}" font-size="9"
+            letter-spacing="1.2">${voi}${isStale ? '·STL' : (offline ? '·OFF' : '')}</text>
+    `;
+    svg.appendChild(g);
+  });
+}
+
+/* ==============================================================
+   Node table
+   ============================================================== */
+function renderTable() {
+  const tbody = $('tableBody');
+  if (!tbody) return;
+  const sorted = Array.from(state.nodesData.values())
+    .sort((a, b) => (a.dev_id || '').localeCompare(b.dev_id || ''));
+  if (sorted.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="12" class="empty">awaiting node data …</td></tr>';
+    return;
+  }
+  tbody.innerHTML = sorted.map(n => {
+    const age = Date.now() - (n.lastUpdate || 0);
+    const offline = age > CONFIG.NODE_TIMEOUT_MS;
+    const voi = shortVoi(n.state || n.voi_state);
+    const dot = offline ? 'dot-off' :
+                voi === 'S2' ? 'dot-bad' :
+                voi === 'S1' ? 'dot-warn' : 'dot-good';
+    const wl = (n.water_level_m ?? n.water_level);
+    const rssi = n.rssi ?? n.features?.rssi ?? -120;
+    const transport = n.transport ?? n.features?.transport ?? '—';
+    const lc = n.link_class ?? n.features?.link_class ?? '—';
+    const sr = n.success_rate;
+    const hops = n.hop_count ?? 1;
+    const nh = n.via_relay ? `N${n.via_relay}` : 'direct';
+    const risk = n.risk;
+    return `
+      <tr class="${offline ? 'offline' : ''}">
+        <td><span class="dot ${dot}"></span>${n.dev_id || '—'}</td>
+        <td><span class="voi voi-${voi}">${voi}</span></td>
+        <td>${fmtNum(wl, 2)}</td>
+        <td><span class="tx tx-${transport}">${transport}</span></td>
+        <td>${lc}</td>
+        <td>${Math.round(rssi)}</td>
+        <td>${sr !== undefined ? (sr * 100).toFixed(0) + '%' : '—'}</td>
+        <td>${n.total_rx ?? 0}</td>
+        <td>${hops}</td>
+        <td>${nh}</td>
+        <td>${risk !== undefined ? risk.toFixed(2) : '—'}</td>
+        <td>${offline ? 'offline' : fmtAge(age)}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/* ==============================================================
+   Stats
+   ============================================================== */
+function updateStats() {
+  const all = Array.from(state.nodesData.values());
+  const now = Date.now();
+  const online = all.filter(n => (now - (n.lastUpdate || 0)) < CONFIG.NODE_TIMEOUT_MS);
+
+  $('totalNodes').textContent = online.length;
+  const managedCount = getActiveNodes().length;
+  $('totalNodesMeta').textContent = `of ${managedCount} discovered`;
+
+  const wls = online.map(n => n.water_level_m ?? n.water_level)
+                    .filter(v => typeof v === 'number');
+  if (wls.length) {
+    const avg = wls.reduce((a,b)=>a+b,0) / wls.length;
+    const min = Math.min(...wls), max = Math.max(...wls);
+    $('avgWater').textContent = fmtNum(avg, 2);
+    $('waterMeta').textContent = `range ${fmtNum(min,2)} ~ ${fmtNum(max,2)}`;
+  }
+
+  const alertN = online.filter(n => shortVoi(n.state || n.voi_state) === 'S2');
+  $('alertCount').textContent = alertN.length;
+  $('alertCount').className = 'stat-value ' + (alertN.length > 0 ? 'bad' : '');
+
+  const multi = online.filter(n => (n.hop_count ?? 1) > 1).length;
+  $('multiHop').textContent = multi;
+  $('hopMeta').textContent = `${online.length - multi} direct / ${multi} relay`;
+
+  const rssis = online.map(n => n.rssi ?? n.features?.rssi)
+                      .filter(v => typeof v === 'number' && v > -150);
+  if (rssis.length) {
+    const avg = rssis.reduce((a,b)=>a+b,0) / rssis.length;
+    $('avgRssi').textContent = Math.round(avg);
+    $('rssiMeta').textContent = avg > -70 ? 'dBm · strong' : avg > -85 ? 'dBm · fair' : 'dBm · weak';
+  }
+
+  if (alertN.length > 0) {
+    $('alertArea').style.display = 'flex';
+    $('alertMessages').innerHTML = alertN.map(n =>
+      `${n.dev_id} · water <strong>${fmtNum(n.water_level_m ?? n.water_level, 2)} m</strong> · RSSI ${Math.round(n.rssi ?? n.features?.rssi ?? -120)} dBm · transport <em>${n.transport ?? '?'}</em>`
+    ).join('<br>');
+  } else {
+    $('alertArea').style.display = 'none';
+  }
+
+  const aodvN = Object.keys(state.routeTable).length;
+  const aodvHR = Object.values(state.routeTable).filter(r => r.high_risk === 1).length;
+  $('aodvSummary').innerHTML = `${aodvN} routes &nbsp;·&nbsp; ${aodvHR} high-risk`;
+}
+
+/* ==============================================================
+   DQN
+   ============================================================== */
+function updateDQN() {
+  const d = state.dqnState || {};
+  $('dqnSteps').textContent = d.steps ?? 0;
+  $('dqnStepsInline').textContent = d.steps ?? 0;
+  $('dqnEps').textContent = d.epsilon !== undefined ? d.epsilon.toFixed(3) : '—';
+  $('dqnLoss').textContent = d.loss_ema !== undefined ? d.loss_ema.toFixed(4) : '—';
+  $('dqnLossInline').textContent = d.loss_ema !== undefined ? d.loss_ema.toFixed(4) : '—';
+  $('dqnAvgQ').textContent = d.avg_q_ema !== undefined ? d.avg_q_ema.toFixed(3) : '—';
+  $('dqnReplay').textContent = d.replay_size ?? 0;
+  $('dqnPending').textContent = d.pending_size ?? 0;
+  $('dqnTag').textContent = d.tag ?? '—';
+
+  const labels = d.action_labels ?? ['DIRECT', 'RELAY'];
+  const dist   = d.action_dist   ?? [0, 0];
+  const recDist= d.action_dist_recommended ?? null;
+
+  const bars = $('actionBars');
+  if (bars) {
+    let convergenceHint = '';
+    if (recDist) {
+      // 計算 actual 跟 intent 的最大差距
+      let maxDiff = 0;
+      for (let i = 0; i < dist.length; i++) {
+        maxDiff = Math.max(maxDiff, Math.abs((dist[i] || 0) - (recDist[i] || 0)));
+      }
+      const eps = d.epsilon ?? 0;
+      const steps = d.steps ?? 0;
+      if (maxDiff > 0.5 && eps > 0.1) {
+        convergenceHint = `<div style="margin-top:12px; padding:10px 14px; background:#fff8f0; border-left:3px solid var(--data-amber); font-family:var(--serif); font-style:italic; font-size:12px; color:var(--ink-2);">
+          ⚠ <strong>DQN exploring</strong> — actual vs intent differs by ${(maxDiff*100).toFixed(0)}%, ε=${eps.toFixed(3)}, steps=${steps}. Network is functional (using actual decisions); DQN is still learning. Will converge once ε &lt; 0.1 and steps &gt; 50.
+        </div>`;
+      } else if (maxDiff < 0.2 && steps > 30) {
+        convergenceHint = `<div style="margin-top:12px; padding:10px 14px; background:#f0f8f0; border-left:3px solid var(--data-teal); font-family:var(--serif); font-style:italic; font-size:12px; color:var(--ink-2);">
+          ✓ <strong>DQN converged</strong> — intent aligns with actual within ${(maxDiff*100).toFixed(0)}%. Policy learned successfully.
+        </div>`;
+      }
+    }
+
+    bars.innerHTML = labels.map((lab, i) => {
+      const pct = (dist[i] || 0) * 100;
+      const cls = i === 0 ? 'direct' : 'relay';
+      const recPct = recDist ? (recDist[i] || 0) * 100 : null;
+      const recHtml = recPct !== null
+        ? ` <span style="color:var(--ink-3); font-size:10px;">(intent ${recPct.toFixed(0)}%)</span>`
+        : '';
+      return `
+        <div class="action-row">
+          <div class="action-label">${lab}</div>
+          <div class="action-bar-track"><div class="action-bar-fill ${cls}" style="width:${pct.toFixed(1)}%"></div></div>
+          <div class="action-pct">${pct.toFixed(1)}%${recHtml}</div>
+        </div>
+      `;
+    }).join('') + convergenceHint;
+  }
+  const direct = ((dist[0] || 0) * 100).toFixed(0);
+  const relay  = ((dist[1] || 0) * 100).toFixed(0);
+  $('dqnSummary').innerHTML = `${direct}% direct &nbsp;·&nbsp; ${relay}% relay`;
+
+  if (d.tag) {
+    state.currentTag = d.tag;
+    $('currentTag').textContent = `tag: ${d.tag}`;
+    $('currentTag').className = 'status-pill live';
+  }
+}
+
+/* ==============================================================
+   Routing & events
+   ============================================================== */
+function renderRouteTable() {
+  const tbody = $('routeTableBody');
+  if (!tbody) return;
+  const dsts = Object.keys(state.routeTable).sort();
+  if (dsts.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">awaiting <code>route_table</code> …</td></tr>';
+    return;
+  }
+  tbody.innerHTML = dsts.map(dst => {
+    const r = state.routeTable[dst];
+    const cls = r.high_risk === 1 ? 'high-risk' : '';
+    const txC = r.tx_common || '—';
+    const txA = r.tx_alert  || '—';
+    return `
+      <tr class="${cls}">
+        <td>N${dst}</td>
+        <td>${r.nh ? 'N' + r.nh : '—'}</td>
+        <td>${r.hops ?? '—'}</td>
+        <td>${r.rssi ?? '—'}</td>
+        <td>${r.risk !== undefined ? r.risk.toFixed(2) : '—'}</td>
+        <td>${r.cost !== undefined ? r.cost.toFixed(2) : '—'}</td>
+        <td><span class="tx tx-${txC}">${txC}</span></td>
+        <td><span class="tx tx-${txA}">${txA}</span></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function _eventKey(ev) {
+  return `${ev.ts}_${ev.kind || ev.tag || ''}_${ev.dst ?? ''}_${ev.nh ?? ''}_${ev.rssi ?? ''}`;
+}
+
+function _addEventDedup(ev) {
+  const key = _eventKey(ev);
+  const recent = state.aodvEvents.slice(-60);
+  if (recent.some(e => _eventKey(e) === key)) return false;
+  state.aodvEvents.push(ev);
+  while (state.aodvEvents.length > CONFIG.EVENT_LOG_MAX * 2) state.aodvEvents.shift();
+  return true;
+}
+
+function renderAodvEvents() {
+  const log = $('aodvEvents');
+  if (!log) return;
+  if (state.aodvEvents.length === 0) {
+    log.innerHTML = '<div style="border:none; color:var(--ink-3); font-family: var(--serif); font-style: italic;">awaiting events …</div>';
+    return;
+  }
+  const recent = state.aodvEvents.slice(-CONFIG.EVENT_LOG_MAX).reverse();
+  log.innerHTML = recent.map(ev => {
+    const t = new Date(ev.ts || Date.now());
+    const time = `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}`;
+    const tag = (ev.kind || 'EVENT').replace(/_RX|_TX|_UPDATE/, '');
+    const desc = `dst=N${ev.dst ?? '?'}` +
+                 (ev.nh   ? ` · nh=N${ev.nh}`     : '') +
+                 (ev.hops ? ` · hops=${ev.hops}`  : '') +
+                 (ev.rssi ? ` · rssi=${ev.rssi}`  : '');
+    return `<div>
+      <span class="ev-time">${time}</span>
+      <span class="ev-tag ${tag}">${tag}</span>
+      <span class="ev-desc">${desc}</span>
+    </div>`;
+  }).join('');
+}
+
+/* ==============================================================
+   Trends & energy
+   ============================================================== */
+function refreshTrendCharts() {
+  const labels = [];
+  const wlDatasets = [];
+  const rsDatasets = [];
+  let labelSet = false;
+
+  for (const nid of getActiveNodes()) {
+    const wlH = state.waterHistory.get(String(nid)) || [];
+    const rsH = state.rssiHistory.get(String(nid)) || [];
+    const color = nodeColor(nid);
+
+    if (!labelSet && wlH.length > 0) {
+      for (const p of wlH) labels.push(new Date(p.t).toLocaleTimeString().slice(3));
+      labelSet = true;
+    }
+    wlDatasets.push({
+      label: 'N' + nid, data: wlH.map(p => p.v),
+      borderColor: color, backgroundColor: 'transparent',
+      tension: 0.25, pointRadius: 0, borderWidth: 1.5,
+    });
+    rsDatasets.push({
+      label: 'N' + nid, data: rsH.map(p => p.v),
+      borderColor: color, backgroundColor: 'transparent',
+      tension: 0.25, pointRadius: 0, borderWidth: 1.5,
+    });
+  }
+
+  if (waterChart) {
+    waterChart.data.labels = labels;
+    waterChart.data.datasets = wlDatasets;
+    waterChart.update('none');
+  }
+  if (rssiChart) {
+    rssiChart.data.labels = labels;
+    rssiChart.data.datasets = rsDatasets;
+    rssiChart.update('none');
+  }
+  if (transportChart) {
+    transportChart.data.datasets[0].data = [
+      state.transportCounts.WIFI, state.transportCounts.LORA,
+    ];
+    transportChart.update('none');
+  }
+  if (linkChart) {
+    linkChart.data.datasets[0].data = [
+      state.linkCounts.A, state.linkCounts.B,
+      state.linkCounts.C, state.linkCounts.D,
+    ];
+    linkChart.update('none');
+  }
+}
+
+function renderEnergy() {
+  const sumEl = $('energySummary');
+  const tags = Object.keys(state.energyByTag);
+  if (tags.length === 0) {
+    sumEl.innerHTML = '<div class="empty" style="grid-column:1/-1;">awaiting <code>sensor/sink/energy</code> …</div>';
+    if (energyChart) {
+      energyChart.data.labels = []; energyChart.data.datasets = [];
+      energyChart.update('none');
+    }
+    return;
+  }
+  sumEl.innerHTML = tags.map(tag => {
+    const arr = state.energyByTag[tag];
+    const last = arr[arr.length - 1];
+    const totalJ = (last.total_mj / 1000).toFixed(2);
+    const isActive = state.currentTag === tag;
+    return `
+      <div class="energy-card ${isActive ? 'active' : ''}">
+        <div class="energy-tag">${tag}${isActive ? ' · live' : ''}</div>
+        <div class="energy-value">${totalJ}<small>J</small></div>
+        <div class="energy-meta">${arr.length} samples</div>
+      </div>
+    `;
+  }).join('');
+
+  const showTags = state.filterTag === 'ALL' ? tags : [state.filterTag];
+  let allTimes = new Set();
+  showTags.forEach(tag => {
+    const arr = state.energyByTag[tag];
+    if (arr) arr.forEach(p => allTimes.add(p.ts));
+  });
+  const sortedTimes = Array.from(allTimes).sort((a, b) => a - b);
+  const labels = sortedTimes.map(t => new Date(t).toLocaleTimeString().slice(3));
+
+  const datasets = [];
+  showTags.forEach(tag => {
+    const arr = state.energyByTag[tag];
+    if (!arr) return;
+    const tsToVal = new Map();
+    arr.forEach(p => tsToVal.set(p.ts, p.total_mj));
+    const data = sortedTimes.map(t => tsToVal.get(t) ?? null);
+    datasets.push({
+      label: tag,
+      data,
+      borderColor: TAG_COLORS[tag] || COLORS.blue,
+      backgroundColor: 'transparent',
+      tension: 0.2, pointRadius: 0, borderWidth: 1.8,
+      spanGaps: true,
+    });
+  });
+
+  if (energyChart) {
+    energyChart.data.labels = labels;
+    energyChart.data.datasets = datasets;
+    energyChart.update('none');
+  }
+}
+
+/* ==============================================================
+   Throttled wrappers
+   ============================================================== */
+const tTopo  = makeThrottled(drawTopology,        CONFIG.TOPO_REFRESH_MS);
+const tTable = makeThrottled(renderTable,         CONFIG.TABLE_REFRESH_MS);
+const tStats = makeThrottled(updateStats,         CONFIG.TABLE_REFRESH_MS);
+const tDQN   = makeThrottled(updateDQN,           CONFIG.TABLE_REFRESH_MS);
+const tRoute = makeThrottled(renderRouteTable,    CONFIG.TABLE_REFRESH_MS);
+const tEvts  = makeThrottled(renderAodvEvents,    CONFIG.TABLE_REFRESH_MS);
+const tTrend = makeThrottled(refreshTrendCharts,  CONFIG.CHART_REFRESH_MS);
+const tNRG   = makeThrottled(renderEnergy,        CONFIG.CHART_REFRESH_MS);
+
+/* ==============================================================
+   MQTT handlers
+   ============================================================== */
+function handleNodeData(topic, data) {
+  const m = topic.match(/node_(\d+)/);
+  if (!m) return;
+  const dev = 'node_' + m[1];
+  const existing = state.nodesData.get(dev) || {};
+  state.nodesData.set(dev, { ...existing, ...data, dev_id: dev, lastUpdate: Date.now() });
+
+  const nid = String(parseInt(m[1], 10));
+  const wl = data.water_level_m ?? data.water_level;
+  if (typeof wl === 'number') pushHistory(state.waterHistory, nid,
+    { t: Date.now(), v: wl }, CONFIG.HISTORY_MAX_POINTS);
+  const rs = data.rssi ?? data.features?.rssi;
+  if (typeof rs === 'number' && rs > -150 && rs < -10)
+    pushHistory(state.rssiHistory, nid, { t: Date.now(), v: rs }, CONFIG.HISTORY_MAX_POINTS);
+
+  const tr = data.transport ?? data.features?.transport;
+  if (tr === 'WIFI' || tr === 'LORA') state.transportCounts[tr]++;
+  const lc = data.link_class ?? data.features?.link_class;
+  if (lc && state.linkCounts[lc] !== undefined) state.linkCounts[lc]++;
+
+  tTable(); tStats(); tTopo(); tTrend();
+}
+
+function handleHopInfo(topic, data) {
+  const nid = String(data.src);
+  state.hopInfo.set(nid, {
+    hops: data.hops, nh: data.nh,
+    link_class: data.link_class, rssi: data.rssi,
+    risk: data.risk, transport: data.transport,
+  });
+  tTopo();
+}
+
+function handleRouteTable(data) {
+  state.routeTable = data.RT || data.rt || {};
+  if (Array.isArray(data.events)) {
+    let added = 0;
+    data.events.forEach(ev => { if (_addEventDedup(ev)) added++; });
+    if (added > 0) tEvts();
+  }
+  if (data.TAG || data.tag) {
+    state.currentTag = data.TAG || data.tag;
+    $('currentTag').textContent = `tag: ${state.currentTag}`;
+    $('currentTag').className = 'status-pill live';
+  }
+  tRoute(); tTopo(); tStats();
+}
+
+function handleDqnState(data) {
+  state.dqnState = { ...state.dqnState, ...data };
+  tDQN();
+}
+
+function handleAodvEvent(data) {
+  if (_addEventDedup(data)) tEvts();
+}
+
+function handleEnergy(data) {
+  const tag = data.tag || 'UNKNOWN';
+  if (!state.energyByTag[tag]) state.energyByTag[tag] = [];
+  const arr = state.energyByTag[tag];
+  arr.push({
+    ts: data.ts || Date.now(),
+    total_mj: data.total_mj || 0,
+    nodes: data.nodes || {},
+  });
+  while (arr.length > CONFIG.ENERGY_HISTORY_MAX) arr.shift();
+  state.currentTag = tag;
+  $('currentTag').textContent = `tag: ${tag}`;
+  $('currentTag').className = 'status-pill live';
+  tNRG();
+}
+
+/* ★ v5.6: Fallback stats handler */
+function handleFallbackStats(data) {
+  state.fallbackStats = data;
+  renderFallbackPanel();
+}
+
+function renderFallbackPanel() {
+  const data = state.fallbackStats;
+  if (!data) return;
+  const tbody = $('fallbackTableBody');
+  if (!tbody) return;
+  const nodes = data.nodes || {};
+  const keys = Object.keys(nodes).sort();
+  if (keys.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">awaiting <code>sensor/sink/fallback_stats</code> …</td></tr>';
+    return;
+  }
+  tbody.innerHTML = keys.map(k => {
+    const fb = nodes[k];
+    const inFb = fb.in_fb === 1;
+    const stateLabel = inFb
+      ? '<span style="color:var(--data-amber); font-weight:600;">● FALLBACK</span>'
+      : '<span style="color:var(--data-teal);">● normal</span>';
+    // ★ v5.6.1: fb.last_update 是 Pico 的 ticks_ms (非 unix timestamp)
+    //   用 sink 訊息的 ts 與 fb.last_update 之差,再轉成「相對於現在多久前」
+    const sinkTs = data.ts || 0;
+    let age = '—';
+    if (fb.last_update && sinkTs) {
+      const ageMs = sinkTs - fb.last_update;
+      if (ageMs >= 0 && ageMs < 86400000) {
+        age = Math.floor(ageMs / 1000) + 's ago';
+      } else {
+        age = 'live';   // 若 last_update 比 sinkTs 還新表示同一輪,顯示 live
+      }
+    }
+    return `
+      <tr ${inFb ? 'class="high-risk"' : ''}>
+        <td>${k}</td>
+        <td>${stateLabel}</td>
+        <td>${fb.enter_count || 0}</td>
+        <td>${fb.recover_count || 0}</td>
+        <td>${fb.pending_now || 0}</td>
+        <td>${fb.resent_total || 0}</td>
+        <td>${age}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const s = data.summary || {};
+  $('fbInActive').textContent = s.total_in_fb || 0;
+  $('fbInActive').className = 'stat-value' + ((s.total_in_fb || 0) > 0 ? ' warn' : '');
+  $('fbTotalEnter').textContent = s.total_enter || 0;
+  $('fbTotalRecover').textContent = s.total_recover || 0;
+  $('fbTotalPending').textContent = s.total_pending || 0;
+  $('fbTotalResent').textContent = s.total_resent || 0;
+}
+
+const tFB = makeThrottled(renderFallbackPanel, CONFIG.TABLE_REFRESH_MS);
+
+/* ==============================================================
+   ★ v5.6 SCALABLE: Known Nodes (dynamic discovery)
+   ============================================================== */
+
+function handleKnownNodes(data) {
+  state.knownNodes = data;
+  state.nodeCapacity = {
+    current: data.count || 0,
+    max: data.max_nodes || 32,
+  };
+
+  // 把新事件加入 log(去重)
+  if (Array.isArray(data.events)) {
+    data.events.forEach(ev => {
+      const eid = `${ev.ts}_${ev.kind}_${ev.nid}`;
+      if (!state.seenEventIds.has(eid)) {
+        state.seenEventIds.add(eid);
+        state.discoveryLog.unshift(ev);   // 新事件放最前面
+      }
+    });
+    while (state.discoveryLog.length > 50) state.discoveryLog.pop();
+  }
+
+  renderCapacityTile();
+  renderDiscoveryPanel();
+  // 節點清單變了 → 觸發拓撲 + 表格重繪
+  tTOPO();
+}
+
+function renderCapacityTile() {
+  const el = $('nodeCapacity');
+  const elMeta = $('nodeCapacityMeta');
+  if (!el) return;
+  const cap = state.nodeCapacity;
+  el.textContent = `${cap.current}/${cap.max}`;
+  const pct = cap.max > 0 ? (cap.current / cap.max * 100) : 0;
+  if (elMeta) elMeta.textContent = `${pct.toFixed(0)}% capacity`;
+  el.className = 'stat-value' +
+    (pct >= 90 ? ' warn' : (pct >= 75 ? ' caution' : ''));
+}
+
+function renderDiscoveryPanel() {
+  // 事件流
+  const logEl = $('discoveryLog');
+  if (logEl) {
+    if (state.discoveryLog.length === 0) {
+      logEl.innerHTML = '<div class="empty">awaiting node discovery events …</div>';
+    } else {
+      const sinkTs = state.knownNodes?.ts || 0;
+      logEl.innerHTML = state.discoveryLog.slice(0, 30).map(ev => {
+        const kindLabel = {
+          NODE_JOIN:   { label: 'JOIN',     color: 'var(--data-teal)',   icon: '●' },
+          NODE_REJOIN: { label: 'REJOIN',   color: 'var(--data-teal)',   icon: '●' },
+          NODE_STALE:  { label: 'STALE',    color: 'var(--data-amber)',  icon: '○' },
+          NODE_LEAVE:  { label: 'LEAVE',    color: 'var(--ink-3)',       icon: '×' },
+          NODE_EVICT:  { label: 'EVICT',    color: 'var(--data-red)',    icon: '⌫' },
+        }[ev.kind] || { label: ev.kind, color: 'var(--ink-3)', icon: '•' };
+        const ageMs = sinkTs - ev.ts;
+        const ageStr = (ageMs >= 0 && ageMs < 86400000)
+          ? Math.floor(ageMs / 1000) + 's ago'
+          : '—';
+        return `<div class="event-row">
+          <span class="event-time">${ageStr}</span>
+          <span class="event-kind" style="color:${kindLabel.color}; font-weight:600;">${kindLabel.icon} ${kindLabel.label}</span>
+          <span class="event-detail">N${ev.nid}${ev.mode ? ` · mode=${ev.mode}` : ''}${ev.last_seen_ago_s ? ` · silent ${ev.last_seen_ago_s}s` : ''}</span>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  // 節點狀態分組
+  const kn = state.knownNodes;
+  if (!kn) return;
+  const activeEl = $('activeNodesGroup');
+  const staleEl  = $('staleNodesGroup');
+
+  const formatGroup = (arr, emptyText, statusColor) => {
+    if (!arr || arr.length === 0) {
+      return `<div class="empty">${emptyText}</div>`;
+    }
+    return arr.map(nid => {
+      const meta = kn.nodes_meta?.[`node_${String(nid).padStart(2,'0')}`] || {};
+      const ageMs = meta.age_ms || 0;
+      const ageStr = ageMs < 60000 ? Math.floor(ageMs / 1000) + 's'
+                   : Math.floor(ageMs / 60000) + 'm';
+      return `<span class="node-chip" style="border-color:${statusColor};" title="pkts=${meta.total_pkts || 0}, age=${ageStr}">
+        N${nid} <span class="chip-age">${ageStr}</span>
+      </span>`;
+    }).join('');
+  };
+
+  if (activeEl) activeEl.innerHTML = formatGroup(kn.active, 'no active nodes', 'var(--data-teal)');
+  if (staleEl)  staleEl.innerHTML  = formatGroup(kn.stale,  'no stale nodes',  'var(--data-amber)');
+}
+
+/* ==============================================================
+   MQTT connection
+   ============================================================== */
+let client = null;
+let reconnectAttempts = 0;
+
+function connectMQTT() {
+  console.log('Connecting MQTT', CONFIG.MQTT_BROKER);
+  try {
+    client = mqtt.connect(CONFIG.MQTT_BROKER, {
+      reconnectPeriod: 5000, connectTimeout: 10000,
+    });
+  } catch (e) {
+    console.error('mqtt.connect failed:', e); return;
+  }
+
+  client.on('connect', () => {
+    $('mqttStatus').textContent = 'MQTT · connected';
+    $('mqttStatus').className = 'status-pill live';
+    reconnectAttempts = 0;
+
+    [
+      'sensor/+/data', 'sensor/+/heartbeat', 'sensor/+/semantic', 'sensor/+/hop_info',
+      'sensor/sink/route_table', 'sensor/sink/dqn_state',
+      'sensor/sink/aodv_event', 'sensor/sink/energy',
+      'sensor/sink/qhint', 'sensor/sink/ready',
+      'sensor/sink/fallback_stats',  /* ★ v5.6 */
+      'sensor/sink/known_nodes',     /* ★ v5.6 SCALABLE */
+    ].forEach(t => {
+      client.subscribe(t, err => {
+        if (err) console.error('sub fail', t, err);
+        else     console.log('sub', t);
+      });
+    });
+  });
+
+  client.on('message', (topic, msg) => {
+    state.msgCounter.count++;
+    let data;
+    try { data = JSON.parse(msg.toString()); }
+    catch (e) { return; }
+
+    try {
+      if (topic === 'sensor/sink/route_table') return handleRouteTable(data);
+      if (topic === 'sensor/sink/dqn_state')   return handleDqnState(data);
+      if (topic === 'sensor/sink/aodv_event')  return handleAodvEvent(data);
+      if (topic === 'sensor/sink/energy')      return handleEnergy(data);
+      if (topic === 'sensor/sink/fallback_stats') return handleFallbackStats(data);
+      if (topic === 'sensor/sink/known_nodes')    return handleKnownNodes(data);
+      if (topic.endsWith('/hop_info'))         return handleHopInfo(topic, data);
+      if (topic.endsWith('/data'))             return handleNodeData(topic, data);
+      if (topic.endsWith('/heartbeat'))        return handleNodeData(topic, data);
+      if (topic.endsWith('/semantic'))         return handleNodeData(topic, data);
+    } catch (e) { console.error('handler error on', topic, e); }
+  });
+
+  client.on('error', () => {
+    $('mqttStatus').textContent = 'MQTT · error';
+    $('mqttStatus').className = 'status-pill error';
+  });
+  client.on('offline', () => {
+    $('mqttStatus').textContent = 'MQTT · disconnected';
+    $('mqttStatus').className = 'status-pill error';
+  });
+  client.on('reconnect', () => {
+    reconnectAttempts++;
+    $('mqttStatus').textContent = `MQTT · reconnecting (${reconnectAttempts})`;
+    $('mqttStatus').className = 'status-pill warn';
+  });
+}
+
+/* ==============================================================
+   Periodic
+   ============================================================== */
+setInterval(() => {
+  const dt = (Date.now() - state.msgCounter.lastReset) / 1000;
+  const rate = state.msgCounter.count / dt;
+  $('msgRate').textContent = `${rate.toFixed(1)} msg/s`;
+  $('updateRate').textContent = `${rate.toFixed(1)} msg/s · ${state.nodesData.size} nodes`;
+  state.msgCounter.count = 0;
+  state.msgCounter.lastReset = Date.now();
+}, 2000);
+
+setInterval(() => {
+  const now = Date.now();
+  let changed = false;
+  for (const [k, v] of state.nodesData) {
+    if (now - (v.lastUpdate || 0) > CONFIG.NODE_TIMEOUT_MS * 4) {
+      state.nodesData.delete(k); changed = true;
+    }
+  }
+  if (changed) { tTable(); tStats(); tTopo(); }
+}, 60000);
+
+setInterval(() => {
+  tTable(); tStats(); tTopo();
+}, 5000);
+
+$('tagFilter').addEventListener('change', (e) => {
+  state.filterTag = e.target.value;
+  renderEnergy();
+});
+
+/* ==============================================================
+   Boot
+   ============================================================== */
+initCharts();
+updateDQN();
+drawTopology();
+renderEnergy();
+connectMQTT();
+
+console.log('%cv5.6 Observation Console ready', 'color:#1f3b66; font-weight:bold; font-size:14px;');
+</script>
+
+</body>
+</html>

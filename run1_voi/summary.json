@@ -1,0 +1,28 @@
+{
+  "exp_label": "run1_voi",
+  "logger_started": "2026-04-25T20:20:17.400202",
+  "logger_stopped": "2026-04-25T21:02:49.726825",
+  "packets_total": 739,
+  "packets_by_lc": {
+    "B": 84,
+    "C": 251,
+    "A": 35,
+    "D": 369
+  },
+  "packets_by_state": {
+    "S0": 57,
+    "S1": 288,
+    "S3": 394
+  },
+  "packets_fallback": 72,
+  "packets_multi_hop": 0,
+  "estimated_total_energy_mj": 188600.0,
+  "nodes_seen": [
+    "node_03",
+    "node_04",
+    "node_05",
+    "node_06",
+    "node_07"
+  ],
+  "first_packet": "2026-04-25T20:20:23.778074"
+}
