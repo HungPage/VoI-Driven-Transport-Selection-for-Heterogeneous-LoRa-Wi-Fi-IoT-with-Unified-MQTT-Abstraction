@@ -1,11 +1,5 @@
 # VoI-Driven-IoT-Transport-Selection
 
-> **Project Version**: 1.0.0 (Research Prototype)
-> **Status**: Ready for IEEE GCCE 2026 Submission
-> **Author**: Jun-Sen Hung (TKU CSIE)
-
----
-
 ##  Project Abstract
 
 Underground culvert flood monitoring faces a fundamental dilemma: **Wi-Fi enables fast transmission but drains batteries, while LoRa conserves energy but lacks bandwidth**. This project implements a transport selection mechanism driven by the semantic **Value of Information (VoI)** rather than RSSI alone.
@@ -67,22 +61,13 @@ Five Pi Pico 2W nodes replay a typhoon water-level trace from the Nanshenjiao Br
 ##  Repository Structure
 
 ```
-.
-├── N234_node_student_model_integrated.py   # Leaf firmware (N3-N7)
-├── N1sink_student_model_compatible.py      # Sink firmware (N1)
 ├── mqtt_csv_logger.py                      # Laptop MQTT→CSV recorder
 ├── compute_energy.py                       # Energy analysis (Table I)
 ├── Plot.py                                 # Figure generator (Fig 3, Fig 5)
 ├── index.html                              # Real-time dashboard
 ├── N1sink.txt                              # Sample sink console log
 ├── N234..node.txt                          # Sample leaf console log
-├── README.md
-└── experiments/
-    ├── run1_voi/         # VOI_DRIVEN  — proposed
-    ├── run2_lora/        # ALWAYS_LORA — baseline
-    ├── run3_wifi/        # ALWAYS_WIFI — baseline
-    ├── run4_periodic/    # PERIODIC    — baseline
-    └── unknown/          # transient packets (ignorable)
+└──  README.md
 ```
 
 ---
