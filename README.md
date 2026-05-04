@@ -127,18 +127,11 @@ This is **model-based extrapolation**, not INA219 current measurement. Constants
 
 ---
 
-##  Citation
+## Live Dashboard
 
-```bibtex
-@inproceedings{hung2026voi,
-  title     = {VoI-Driven Transport Selection for Heterogeneous LoRa/Wi-Fi IoT
-               with Unified MQTT Abstraction},
-  author    = {Hung, Jun-Sen},
-  booktitle = {Proc. IEEE Global Conference on Consumer Electronics (GCCE)},
-  year      = {2026}
-}
-```
+You can view the real-time operational status and monitoring panel of this system under VoI-driven control:
 
+**[Access the VoI-Driven Flood Monitoring Dashboard](https://hungpage.github.io)**
 ---
 
 ##  License
