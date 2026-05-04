@@ -100,7 +100,7 @@ Five Pi Pico 2W nodes replay a typhoon water-level trace from the Nanshenjiao Br
 
 ##  Quick Start
 
-### 1. Laptop dependencies
+### Laptop dependencies
 ```bash
 # MQTT broker
 sudo apt install mosquitto mosquitto-clients     # Linux
@@ -110,25 +110,8 @@ brew install mosquitto && brew services start mosquitto   # macOS
 pip install paho-mqtt matplotlib numpy
 ```
 
-### 2. Configure firmware
-Edit the EXP block at the top of `N234_node_student_model_integrated.py`:
-```python
-NODE_ID        = 4                  # 3, 4, 5, 6, or 7
-SINK_IP        = "192.168.0.20"
-WIFI_SSID      = "your_wifi"
-WIFI_PASS      = "your_password"
 
-EXP_MODE       = "VOI_DRIVEN"       # or ALWAYS_LORA / ALWAYS_WIFI / PERIODIC
-EXP_DURATION_S = 1800               # 30-min auto-stop
-EXP_LABEL      = "run1_voi"
-```
-
-Edit `N1sink_student_model_compatible.py`:
-```python
-MQTT_BROKER = "192.168.0.11"        # Your laptop's LAN IP
-```
-
-### 3. Flash and run
+### 1. Flash and run
 1. Use Thonny IDE to save firmware as `main.py` on each Pico 2W
 2. Start the logger on the laptop:
    ```bash
@@ -136,18 +119,8 @@ MQTT_BROKER = "192.168.0.11"        # Your laptop's LAN IP
    ```
 3. Power on all six nodes; experiments auto-stop after 30 minutes
 
-### 4. Reproduce all four strategies
-Repeat steps 2–3 with `EXP_MODE` and `EXP_LABEL` set to each of: `VOI_DRIVEN/run1_voi`, `ALWAYS_LORA/run2_lora`, `ALWAYS_WIFI/run3_wifi`, `PERIODIC/run4_periodic`. Keep the logger running through all four.
 
-### 5. Generate paper artifacts
-```bash
-python compute_energy.py --batch ./experiments    # Table I
-python Plot.py                                     # Fig 3 + Fig 5
-```
-
----
-
-##  Energy Model
+##  2. Energy Model
 
 Total energy is estimated as:
 ```
