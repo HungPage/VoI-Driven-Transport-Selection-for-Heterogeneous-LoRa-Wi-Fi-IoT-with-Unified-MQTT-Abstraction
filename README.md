@@ -134,11 +134,6 @@ You can view the real-time operational status and monitoring panel of this syste
 **[Access the VoI-Driven Flood Monitoring Dashboard](https://hungpage.github.io)**
 ---
 
-##  License
-
-MIT License. Water-level data derived from public records of the Nanshenjiao Bridge monitoring station (Taiwan).
-
----
 
 Department of Computer Science and Information Engineering
 Tamkang University, New Taipei, Taiwan
