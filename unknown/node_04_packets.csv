@@ -1,2 +1,0 @@
-timestamp,dev_id,seq,state,voi_state,water_level_m,delta_10m,risk,transport,link_class,target_lc,actual_lc,is_fallback,rssi,orig_rssi,hop_count,via_relay,relay_path,energy_mj,reward,success_rate
-2026-04-25T22:26:01.852,node_04,106,S1,MID,,0.08,0.007,LORA,C,C,C,0,-42,,1,,,400.0,1.473,1.0
