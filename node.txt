@@ -1,46 +1,3 @@
-# ==============================================================
-#  Node 2 / 3 / 4  —  Sensor Node  (Pi Pico 2W)
-#  南深橋水位語意驅動傳輸  v5.6-SCALABLE  動態擴展版
-#
-#  與 v5.5 的差異(本版聚焦於可擴展性):
-#
-#   === Plug-and-Play ===
-#   - NODE_ID 任意 2~99 整數,sink 自動接受(不再需要在 sink 預先註冊)
-#   - 開機後 5 秒內主動發 NODE_HELLO 廣播(讓 sink 立刻看到)
-#   - 之後每 60 秒一次 NODE_HELLO,確保長期 stale 後也能 rejoin
-#
-#   === 加入流程 ===
-#   1. 燒 leaf 改 NODE_ID 即可,無需動 sink/dashboard
-#   2. 開機後 sink 自動 print "[NODE] N? JOINED"
-#   3. dashboard 拓撲圖立刻新增節點
-#
-#   === 沿用 v5.5 ===
-#   - LoRa→WiFi 自動 fallback / pending queue
-#   - LED 雙模式 / 5 秒 [HB] / RAM 三段式
-#
-#  與 v5.1 的差異（本版為 GCCE 論文準備稿）：
-#
-#   === 架構面 ===
-#   1. VoI 硬規則：
-#      transport 由 VOI_TO_TRANSPORT 決定，不再由 DQN 選。
-#      S0/S1/S3 → LoRa,  S2 → WiFi (嚴格版)
-#
-#   2. Relay 決策雙來源：
-#      - DQN/Sink QHINT 建議 "DIRECT" 或 "RELAY"（本地 fallback 規則）
-#      - 若選 RELAY → 用 AODV 路由表查下一跳
-#
-#   3. FSM 去抖動：
-#      連續 DEBOUNCE_ROWS 筆相同 VoI state 才切換 transport，
-#      避免 S1↔S2 邊界反覆切換浪費 WiFi 喚醒成本
-#
-#   4. EXPERIMENT_TAG 支援 (VOI_DRIVEN / ALWAYS_LORA / ALWAYS_WIFI / PERIODIC)
-#      — 同 Sink 的 tag 對齊，才能做四策略基準實驗
-#
-#   === 相容面 ===
-#   5. LoRa 封包格式與 v5.1 完全一致（DATA/RELAY/HELLO/RREQ/RREP/RERR/ACK）
-#   6. 可當 N2/N3/N4 中任一個，只改 NODE_ID
-# ==============================================================
-
 from machine import UART, Pin
 import time, json, network, socket, gc, math
 
@@ -48,7 +5,7 @@ import time, json, network, socket, gc, math
 #  §0  設定
 # ─────────────────────────────────────────────────────────────
 
-NODE_ID  = 3       # ★ v5.6: 2~99 任意整數,sink 會自動接受(不需事先註冊)
+NODE_ID  = 3       
 SINK_ID  = 1
 SINK_IP  = "192.168.0.20"
 
@@ -58,67 +15,33 @@ WIFI_PASS = "0933991200"
 ENABLE_WIFI = True
 ENABLE_LORA = True
 
-# ══════════════════════════════════════════════════════════════════════
-# ★★★★ v5.6.9-FINAL GCCE 實驗 Configuration Block ★★★★
-# ══════════════════════════════════════════════════════════════════════
-# 這個區塊控制所有實驗行為,要跑論文的 4 策略對比只需改 EXP_MODE
-# 完全無需動其他任何代碼
-# ══════════════════════════════════════════════════════════════════════
-#EXP_MODE = "VOI_DRIVEN"          # ← 改這裡
-#EXP_DURATION_S = 1800            # 30 分鐘
-#EXP_LABEL = "run1_voi"            # ← 改這裡
-#FORCE_RELAY    = False
-#FORCE_NO_RELAY = False
-#EXP_MODE       = "ALWAYS_LORA"   # ← 改這
-#EXP_DURATION_S = 1800
-#EXP_LABEL      = "run2_lora"      # ← 改這
-#FORCE_RELAY    = False
-#FORCE_NO_RELAY = False
-#EXP_MODE       = "ALWAYS_WIFI"   # ← 改這
-#EXP_DURATION_S = 1800
-#EXP_LABEL      = "run3_wifi"      # ← 改這
-#FORCE_RELAY    = False
-#FORCE_NO_RELAY = False
-#EXP_MODE          = "PERIODIC"      # ← 改這
-#EXP_DURATION_S    = 1800
-#EXP_LABEL         = "run4_periodic" # ← 改這
-#WIFI_PERIODIC_MS  = 600_000         # ← 確認(每 10 分鐘 WiFi 一次)
-#FORCE_RELAY       = False
-#FORCE_NO_RELAY    = False
-# === 實驗模式 ===
-#   "VOI_DRIVEN"  : 預設 — VoI 硬規則 + DQN 選 RELAY (論文主角)
-#   "ALWAYS_LORA" : baseline — 全部都走 LoRa-1x (省能但警報可能丟)
-#   "ALWAYS_WIFI" : baseline — 全部都走 WiFi-STD (可靠但耗電)
-#   "PERIODIC"    : baseline — 定時 WiFi,其餘 LoRa (傳統策略)
-EXP_MODE          = "PERIODIC"      # ← 改這
+EXP_MODE          = "PERIODIC"      
 EXP_DURATION_S    = 1800
-EXP_LABEL         = "run4_periodic" # ← 改這
-WIFI_PERIODIC_MS  = 600_000         # ← 確認(每 10 分鐘 WiFi 一次)
+EXP_LABEL         = "run4_periodic" 
+WIFI_PERIODIC_MS  = 600_000         
 FORCE_RELAY       = False
-FORCE_NO_RELAY    = False        # ← 加這行 (每 10 分鐘 WiFi 一次)
-# ══════════════════════════════════════════════════════════════════════
-# 以下保留舊欄位名稱向下相容 (不要刪)
-EXPERIMENT_TAG = EXP_MODE    # 舊代碼用這個名字
-TRANSPORT_MODE = "AUTO"      # AUTO = 按 EXP_MODE 走
-# ══════════════════════════════════════════════════════════════════════
+FORCE_NO_RELAY    = False        
+
+EXPERIMENT_TAG = EXP_MODE    
+TRANSPORT_MODE = "AUTO"      
+
 
 LORA_NETWORK_ID = 18
 LORA_BAND       = 923000000
 
 CSV_PATH      = "/nanshenqiao_clean_source.csv"
-CSV_STATE_COL = "semantic_state_name"   # 僅保留做 debug 對照，不再當主輸入
+CSV_STATE_COL = "semantic_state_name"  
 
-# ★ Student model deployment
-SEMANTIC_SOURCE = "MODEL"   # "MODEL" / "CSV_LABEL"
+
+SEMANTIC_SOURCE = "MODEL"  
 MODEL_NAME = "frozen_d3_student_17f_depth3"
 
 SAFE_LINE  = 6.5
 ALERT_LINE = 8.0
-MAX_HIST_LEN = 31           # 假設 CSV 約每分鐘一筆，保留 >=30 分鐘上下文
+MAX_HIST_LEN = 31           
 
 COMPRESS_TX = False
 
-# Relay / mesh
 ENABLE_RELAY         = True
 RELAY_RSSI_GATE      = -85
 RELAY_DEDUP_MS       = 15000
@@ -126,26 +49,14 @@ MAX_HOP_COUNT        = 3
 RELAY_TX_CAP         = 20
 RELAY_IMPROVE_MARGIN = 6
 
-# ★ v5.6.2 RELAY wrapper 壓縮 - 改用單字母欄位
-#   未壓縮 wrapper ~80B overhead(T/SRC/SEQ/HOPS/ORIG_RSSI/PAYLOAD)
-#   壓縮後      ~30B overhead(T/S/Q/H/R/P)
-#   讓 RYLR998 (max 240B) 能成功送出 multi-hop 封包
 RELAY_WRAP_MAX_BYTES = 230    # RELAY wrap 大於此值自動退回 DIRECT
 
 FAIL_RERR_THRESHOLD  = 3
 
-# QHint fine-tune 混合係數
 QHINT_BLEND_RATE = 0.25
 
-# ★ v5.2 FSM 去抖動：連續 N 筆相同 VoI 才切換 transport
 DEBOUNCE_ROWS = 3
 
-# ─────────────────────────────────────────────────────────────
-#  §0.5 ★ v5.2 VoI → Transport 硬規則表（嚴格版）
-#  ★ v5.6.9: 4 對 1 硬對應(方案 B) + N-TX diversity
-#    S0→LoRa-1x(B), S1→WiFi-ECO(C), S2→WiFi-STD(A), S3→LoRa-2x(D)
-#    能耗與空中時間差異來自 N-TX 次數,而非 SF 動態切換
-# ─────────────────────────────────────────────────────────────
 VOI_TO_TRANSPORT = {
     "S0": "LORA",    # STABLE → LoRa-1x (lc=B) 省能心跳
     "S1": "WIFI",    # TREND (RISING) → WiFi-ECO (lc=C) 低功耗快報
@@ -153,7 +64,6 @@ VOI_TO_TRANSPORT = {
     "S3": "LORA",    # RECEDING → LoRa-2x (lc=D) 事件穩傳 (N-TX diversity)
 }
 
-# ★ v5.6.9: VoI → 目標 link class 的完整對應(給 _resolve_lc 用)
 VOI_TO_LINK_CLASS = {
     "S0": "B",   # LoRa-1x   · 100 mJ (1× TX)
     "S1": "C",   # WiFi-ECO  · 400 mJ (1× TCP no-ACK)
