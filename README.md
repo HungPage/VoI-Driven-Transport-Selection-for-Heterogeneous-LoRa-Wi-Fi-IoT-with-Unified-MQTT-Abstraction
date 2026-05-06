@@ -45,7 +45,7 @@ Maps the semantic state to a **link class** via a deterministic table. No learni
 
 ##  Experimental Results
 
-Five Pi Pico 2W nodes replay a typhoon water-level trace from the Nanshenjiao Bridge monitoring station. Four strategies evaluated, each ≥30 minutes:
+Five Pi Pico 2W nodes recreated the typhoon water level change trajectory at a monitoring station in Taipei. Four strategies were evaluated, each lasting ≥30 minutes:
 
 | Strategy           | Avg Power | 24h Energy | Battery Life | Link Classes Used |
 |--------------------|-----------|------------|--------------|-------------------|
@@ -133,8 +133,11 @@ You can view the real-time operational status and monitoring panel of this syste
 
 **[Access the VoI-Driven Flood Monitoring Dashboard](https://hungpage.github.io)**
 ---
+## Acknowledgment
 
+The water-level trajectory data used for the simulation of typhoon events in this project was  by the Hydraulic Engineering Office (Taipei City Government). Their support in providing real-world hydrological data was instrumental in validating our VoI-driven transport selection mechanism.
 
 Department of Computer Science and Information Engineering
 Tamkang University, New Taipei, Taiwan
-✉️ 412411240@o365.tku.edu.tw
+412411240@o365.tku.edu.tw
+4124112596@o365.tku.edu.tw
