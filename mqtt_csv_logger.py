@@ -1,35 +1,3 @@
-#!/usr/bin/env python3
-"""
-mqtt_csv_logger.py — 筆電端 GCCE 實驗資料記錄器
-
-訂閱 sink 發布的 MQTT topic,將每筆封包依 exp_label 分檔存成 CSV。
-實驗結束(leaf 燒錄 EXP_DURATION_S 到期)後,EXP_SUMMARY 會寫到 JSON
-方便後續 compute_energy.py 計算論文 Table I 數字。
-
-使用方式:
-    python3 mqtt_csv_logger.py --broker 127.0.0.1 --out ./experiments
-
-硬體拓撲 (對應筆電端):
-    [Pico 2W leaves] → LoRa/WiFi → [Pico 2W sink (N1)]
-                                       → MQTT publish (192.168.0.11:1883)
-                                       → 筆電 Mosquitto broker
-                                       → 此腳本 (mqtt_csv_logger.py)
-
-目錄結構:
-    experiments/
-        run1_voi/
-            n3_packets.csv
-            n4_packets.csv
-            n6_packets.csv
-            n7_packets.csv
-            fallback_events.csv
-            aodv_events.csv
-            summary.json
-            config.json
-
-相依套件:
-    pip3 install paho-mqtt
-"""
 import argparse
 import csv
 import json
