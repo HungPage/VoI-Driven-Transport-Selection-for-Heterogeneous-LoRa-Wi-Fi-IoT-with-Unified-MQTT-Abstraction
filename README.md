@@ -468,7 +468,7 @@ python tools/mqtt_csv_logger.py \
 ```bash
 python tools/csv_replay.py \
     --serial /dev/ttyACM0 \
-    --csv data/nanshenqiao.csv
+    --csv data/.csv
 ```
 
 ---
@@ -491,7 +491,7 @@ http://localhost:8000
 
 ## Hardware Experiment
 
-Real Pico 2W deployment using replayed Nanshen Bridge flood data.
+Real Pico 2W deployment using replayed Bridge flood data.
 
 | Strategy | Avg Power | Reachability | Battery Life |
 |---|---|---|---|
@@ -584,7 +584,7 @@ leading to higher latency.
 │   └── index.html
 │
 ├── data/
-│   └── nanshenqiao_clean_source.csv
+│   └──###
 │
 ├── docs/
 │   └── full_report.pdf
@@ -616,7 +616,6 @@ Dashboard features:
 
 Dataset source:
 
-- Nanshen Bridge
 - October 2022
 - Minute-level water level records
 - 2,878 samples
